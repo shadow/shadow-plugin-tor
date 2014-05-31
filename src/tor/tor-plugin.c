@@ -4,7 +4,7 @@
  * See LICENSE for licensing information
  */
 
-#include "shd-scallion.h"
+#include "tor.h"
 #include <openssl/rand.h>
 #include <event2/thread.h>
 

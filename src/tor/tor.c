@@ -4,7 +4,7 @@
  * See LICENSE for licensing information
  */
 
-#include "shd-scallion.h"
+#include "tor.h"
 
 /* replacement for torflow in Tor. for now just grab the bandwidth we configured
  * in the XML and use that as the measured bandwidth value. since our configured

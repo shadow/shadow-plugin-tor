@@ -1,130 +1,104 @@
-## check for dependencies, using built-in cmake files to help us find the libs
-## these are in /usr/share/cmake/Modules/Findxxx.cmake
-find_package(ZLIB REQUIRED)
+project(shadow-plugin-tor)
 
-## other libs dont have a Findxxx.cmake, so we check on our own (./cmake)
-find_package(RT REQUIRED)
-find_package(DL REQUIRED)
-find_package(M REQUIRED)
-find_package(OPENSSL REQUIRED)
-find_package(EVENT2 REQUIRED)
-find_package(GLIB REQUIRED)
+## ensure cmake version
+cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
 
-#find_package(TOR REQUIRED)
-get_filename_component(CURRENT_TOR_DIR "${CMAKE_BINARY_DIR}/../tor" ABSOLUTE)
-include_directories(${CURRENT_TOR_DIR})
-include_directories(${CURRENT_TOR_DIR}/src)
-include_directories(${CURRENT_TOR_DIR}/src/common)
-include_directories(${CURRENT_TOR_DIR}/src/or)
-include_directories(${CURRENT_TOR_DIR}/src/ext)
-
-include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INCLUDES} ${EVENT2_INCLUDES} ${OPENSSL_INCLUDES} ${TOR_INCLUDES} ${SHADOW_INCLUDES})
-
-## import shadow libs
-#INCLUDE(${CMAKE_INSTALL_PREFIX}/share/shadow/shadow-externals.cmake)
-
-## Version-specific defines to handle changes to Tor's functionality
-# version >= 0.2.3.5
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 3 AND ${TOR_VERSION_D} GREATER 4) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 3))
-    add_definitions(-DSCALLION_DOREFILLCALLBACKS)
-	message(STATUS "Added definition SCALLION_DOREFILLCALLBACKS")
-endif()
-# version >= 0.2.4.8
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 4 AND ${TOR_VERSION_D} GREATER 7) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 4))
-    add_definitions(-DSCALLION_USEV2CPUWORKER)
-	message(STATUS "Added definition SCALLION_USEV2CPUWORKER")
-endif()
-# version >= 0.2.4.10
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 4 AND ${TOR_VERSION_D} GREATER 9) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 4))
-    add_definitions(-DSCALLION_USEV2CPUWORKERTIMING)
-    message(STATUS "Added definition SCALLION_USEV2CPUWORKERTIMING")
-endif()
-# version >= 0.2.4.11
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 4 AND ${TOR_VERSION_D} GREATER 10) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 4))
-    add_definitions(-DSCALLION_LOGVWITHSUFFIX)
-    message(STATUS "Added definition SCALLION_LOGVWITHSUFFIX")
-endif()
-# version >= 0.2.5.2
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 5 AND ${TOR_VERSION_D} GREATER 1) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 5))
-    add_definitions(-DSCALLION_NOV2DIR)
-    message(STATUS "Added definition SCALLION_NOV2DIR")
+## ensure unix environment (CMAKE_SYSTEM_NAME == "Linux")
+if((NOT UNIX) OR (NOT ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")))
+    message(FATAL_ERROR "Unix/Linux environment is required.")
 endif()
 
-## get tor source files, but ignore some of them
-aux_source_directory(${CURRENT_TOR_DIR}/src/common torcommon_sources)
-list(REMOVE_ITEM torcommon_sources 
-    ${CURRENT_TOR_DIR}/src/common/sha256.c
-    ${CURRENT_TOR_DIR}/src/common/strlcat.c
-    ${CURRENT_TOR_DIR}/src/common/strlcpy.c
-)
-aux_source_directory(${CURRENT_TOR_DIR}/src/ext torext_sources)
-list(REMOVE_ITEM torext_sources 
-    ${CURRENT_TOR_DIR}/src/ext/OpenBSD_malloc_Linux.c
-    ${CURRENT_TOR_DIR}/src/ext/strlcat.c
-    ${CURRENT_TOR_DIR}/src/ext/strlcpy.c
-    ${CURRENT_TOR_DIR}/src/ext/tinytest.c
-    ${CURRENT_TOR_DIR}/src/ext/tinytest_demo.c
-)
-aux_source_directory(${CURRENT_TOR_DIR}/src/ext/curve25519_donna torextcurve_sources)
-if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "x86_64")
-    list(REMOVE_ITEM torextcurve_sources
-	    ${CURRENT_TOR_DIR}/src/ext/curve25519_donna/curve25519-donna.c
-    )
+## ensure out-of-source build
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
+    message(FATAL_ERROR "An out-of-source build is required. Please see the README.")
+endif()
+
+## make it easier for sub-projects to add CFLAGS
+macro(add_cflags)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ARGN}")
+endmacro(add_cflags)
+
+## now handle the options, set up our own flags
+set(CMAKE_C_FLAGS_DEBUG "")
+set(CMAKE_C_FLAGS_RELEASE "")
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+    message(STATUS "Release enabled. Setting '-DNDEBUG' and '-O3'.")
+    add_definitions(-DNDEBUG)
+    add_cflags(-O3)
 else()
-    list(REMOVE_ITEM torextcurve_sources
-        ${CURRENT_TOR_DIR}/src/ext/curve25519_donna/curve25519-donna-c64.c
-    )
+    set(CMAKE_BUILD_TYPE "Debug")
+    message(STATUS "Debug enabled. Setting '-DDEBUG' and '-g'.")
+    add_definitions(-DDEBUG)
+    add_cflags(-g)
 endif()
-aux_source_directory(${CURRENT_TOR_DIR}/src/or toror_sources)
-list(REMOVE_ITEM toror_sources 
-    ${CURRENT_TOR_DIR}/src/or/ntmain.c
-    ${CURRENT_TOR_DIR}/src/or/tor_main.c
-)
 
-## get tor header files -- we dont need this for now
-#file(GLOB tor_headers ${CURRENT_TOR_DIR}/*.h)
-#file(GLOB toror_headers ${CURRENT_TOR_DIR}/src/or/*.h)
-#file(GLOB torcommon_headers ${CURRENT_TOR_DIR}/src/common/*.h)
-#list(APPEND tor_headers ${toror_headers} ${torcommon_headers})
-#foreach(headerpath ${tor_headers})
-#    get_filename_component(headername ${headerpath} NAME)
-#    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -include ${headername}")
-#endforeach(headerpath)
+## get general includes
+include(CheckIncludeFile)
+include(CheckFunctionExists)
+include(CheckLibraryExists)
+include(TestBigEndian)
 
-## tor needs these defined
-add_definitions(-DLOCALSTATEDIR="/usr/local/var" -DSHARE_DATADIR="/usr/local/var" -DBINDIR="/usr/local/bin")
-remove_definitions(-DNDEBUG)
-## disable warnings from tor code
-add_cflags("-w")
+## general tests and configurations
+TEST_BIG_ENDIAN(IS_BIG_ENDIAN)
+set(CMAKE_INCLUDE_DIRECTORIES_BEFORE ON)
+set(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-## create and install a shared library that can plug into shadow
-add_bitcode(shadow-plugin-scallion-bitcode 
-    shd-scallion-plugin.c shd-scallion.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources})
-add_plugin(shadow-plugin-scallion shadow-plugin-scallion-bitcode)
+## we need to know where shadow is installed
+if("${SHADOW_ROOT}" STREQUAL "")
+    set(SHADOW_ROOT "$ENV{HOME}/.shadow")
+endif()
+if(EXISTS "${SHADOW_ROOT}")
+    message(STATUS "SHADOW_ROOT = ${SHADOW_ROOT}")
+else()
+    message(FATAL_ERROR "SHADOW_ROOT path does not exist: '${SHADOW_ROOT}'")
+endif()
+include_directories(${SHADOW_ROOT}/include)
 
-target_link_libraries(shadow-plugin-scallion
-    ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
-    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES})
+## by default, install to SHADOW_ROOT
+if(NOT ${CMAKE_INSTALL_PREFIX})
+    set(CMAKE_INSTALL_PREFIX "${SHADOW_ROOT}")
+endif()
+## by default, search SHADOW_ROOT first for custom libs
+if("${CMAKE_PREFIX_PATH}" STREQUAL "")
+    set(CMAKE_PREFIX_PATH "${SHADOW_ROOT}")
+endif()
+## make sure the paths exist
+if(NOT EXISTS "${CMAKE_INSTALL_PREFIX}")
+    message(FATAL_ERROR "CMAKE_INSTALL_PREFIX path does not exist: '${CMAKE_INSTALL_PREFIX}'")
+elseif(NOT EXISTS "${CMAKE_PREFIX_PATH}")
+    message(FATAL_ERROR "CMAKE_PREFIX_PATH path does not exist: '${CMAKE_PREFIX_PATH}'")
+else()
+    message(STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}")
+    message(STATUS "CMAKE_PREFIX_PATH = ${CMAKE_PREFIX_PATH}")
+endif()
 
-foreach(lib ${CMAKE_TOR_LIBRARIES})
-    target_link_libraries(shadow-plugin-scallion ${lib})
-endforeach(lib ${CMAKE_TOR_LIBRARIES})
+## we use cmake files from shadow
+if(EXISTS "${SHADOW_ROOT}/share/cmake/Modules")
+    set(CMAKE_MODULE_PATH "${SHADOW_ROOT}/share/cmake/Modules" ${CMAKE_MODULE_PATH})
+endif()
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/" ${CMAKE_MODULE_PATH})
+message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
+include_directories(${CMAKE_MODULE_PATH})
 
-install(TARGETS shadow-plugin-scallion DESTINATION plugins)
-set_target_properties(shadow-plugin-scallion PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib INSTALL_RPATH_USE_LINK_PATH TRUE)
+## we need to use LLVM to build the plug-ins
+set(LLVMHoistGlobalsPATH "${SHADOW_ROOT}/lib/LLVMHoistGlobals.so")
+if(EXISTS "${LLVMHoistGlobalsPATH}")
+    message(STATUS "LLVMHoistGlobalsPATH = ${LLVMHoistGlobalsPATH}")
+else()
+    message(FATAL_ERROR "LLVMHoistGlobalsPATH path does not exist: '${LLVMHoistGlobalsPATH}'")
+endif()
+include(LLVMTools)
+add_custom_target(LLVMHoistGlobals)
 
-## preload library for intercepting functions
-add_library(shadow-preload-scallion SHARED shd-scallion-preload.c)
-target_link_libraries(shadow-preload-scallion ${GLIB_LIBRARIES} ${DL_LIBRARIES})
-install(TARGETS shadow-preload-scallion DESTINATION lib)
+## the plug-ins need to include shd-library.h and cmake files from shadow
+include_directories(${SHADOW_ROOT}/include)
 
-## install scallion script
-install(PROGRAMS scallion DESTINATION bin)
+## plug-ins need to disable fortification to ensure syscalls are intercepted
+#add_definitions(-D_GNU_SOURCE)
+add_cflags("-fno-inline -fno-strict-aliasing")
 
-install(FILES ${CURRENT_TOR_DIR}/src/config/geoip DESTINATION share/)
-#install(DIRECTORY resource/ DESTINATION share PATTERN "config/*")
+## CFLAGS status update
+message(STATUS "CMAKE_C_FLAGS = ${CMAKE_C_FLAGS}")
+
+add_subdirectory(src)
