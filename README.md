@@ -1,6 +1,9 @@
+
+<h3><span style="color:red">Warning: this plugin is a work-in-progress. DO NOT USE IT. Please instead see https://github.com/shadow/shadow</span></h3>
+
 # shadow-plugin-tor
 
-This repository holds a Shadow plug-in that runs the Tor anonymity network software. It can be used to run a private Tor network of clients and relays on a single machine using the Shadow discrete-event network simulator.
+This repository holds a Shadow plug-in that runs the Tor anonymity software. It can be used to run a private Tor network of clients and relays on a single machine using the Shadow discrete-event network simulator.
 
 For more information about Shadow, see https://shadow.github.io and https://github.com/shadow. For more information about Tor, see https://www.torproject.org and https://gitweb.torproject.org/.
 
