@@ -33,7 +33,7 @@ def main():
     args.prefix = os.path.abspath(os.path.expanduser(args.prefix))
     
     datapath = os.path.abspath(args.output+"/data")
-    logpath = os.path.abspath(datapath+"/scallion.log")
+    logpath = os.path.abspath(datapath+"/shadow.log")
     dstatpath = os.path.abspath(datapath+"/dstat.log")
 
     # does our output data directory already have data?
@@ -66,7 +66,7 @@ def main():
         
     # run paths
     shadowpath = os.path.abspath("{0}/bin/shadow".format(args.prefix))
-    preloadpath = os.path.abspath("{0}/lib/libshadow-preload-scallion.so".format(args.prefix))
+    preloadpath = os.path.abspath("{0}/lib/libshadow-preload-tor.so".format(args.prefix))
     xmlpaths = os.path.abspath("{0}".format(args.input))
     
     # command to run
