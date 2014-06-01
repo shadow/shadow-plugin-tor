@@ -1,5 +1,5 @@
 
-<h3><span style="color:red">Warning: this plugin is a work-in-progress. DO NOT USE IT. Please instead see https://github.com/shadow/shadow</span></h3>
+<h3><span style="color:red">Warning: this plugin is a work-in-progress. DO NOT USE IT. Please instead see the "release" branch at https://github.com/shadow/shadow</span></h3>
 
 # shadow-plugin-tor
 
@@ -9,6 +9,20 @@ For more information about Shadow, see https://shadow.github.io and https://gith
 
 ## dependencies
 
+Install Shadow first, as instructed [here](https://github.com/shadow/shadow/wiki/Preparing-your-machine).
+
+## setup
+
+### automatic
+
+```bash
+./setup dependencies
+./setup build
+./setup install
+```
+
+<!--
+## dependencies
 ### Using the Fedora package manager
 
 ```bash
@@ -45,7 +59,9 @@ Note that `--with-openssl-dir` need to be set to specify a custom install path o
 ### build plugin using cmake
 
 ```bash
-CC=`which clang` CXX=`which clang++` cmake .. -DTOR_VERSION_A=0 -DTOR_VERSION_B=2 -DTOR_VERSION_C=5 -DTOR_VERSION_D=2
+mkdir main
+cd main
+CC=`which clang` CXX=`which clang++` cmake ../.. -DTOR_VERSION_A=0 -DTOR_VERSION_B=2 -DTOR_VERSION_C=5 -DTOR_VERSION_D=2
 make -jN
 make install
 ```
@@ -71,7 +87,7 @@ using `VERBOSE=1` for more verbose output
 CC=`which clang` CXX=`which clang++` cmake ..
 VERBOSE=1 make
 ```
-
+-->
 ## contributing
 
 Please submit pull requests to contribute.
