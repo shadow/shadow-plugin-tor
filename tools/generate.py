@@ -681,20 +681,32 @@ def getClientCountryChoices(connectinguserspath):
     
     assert len(lines) > 11
     header = lines[0].strip().split(',')
-    
+
     total = 0
     counts = dict()
-    for linei in xrange(len(lines)-10, len(lines)):
+    dates_seen = 0          #used to get the data for the last 10 dates recorded
+    last_date_seen = ''
+    linei = 0
+    while True:
+        linei -= 1                               #get next line above
+        
         line = lines[linei]
         parts = line.strip().split(',')
-        for i in xrange(2, len(parts)-1): # exclude the last total column "all"
-            if parts[i] != "NA" and parts[i] != "all":
-                country = header[i]
-                n = int(parts[i])
-                total += n
-                if country not in counts: counts[country] = 0
-                counts[country] += n
-                
+
+        if parts[0] != last_date_seen:
+            dates_seen += 1
+            last_date_seen = parts[0]
+            if dates_seen > 10:
+                break                            #if last 10 dates are analyzed, we're finished
+
+        if parts[2] != "??" and parts[2] != "":  #parts[2] == country
+            country = parts[2]
+            n = int(parts[7])                    #parts[7] == num of clients
+            total += n
+            if country not in counts: counts[country] = 0
+            counts[country] += n
+
+
     codes = []
     for c in counts:
         frac = float(counts[c]) / float(total)
