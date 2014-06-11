@@ -180,7 +180,7 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	if (tor_init(argc, argv) < 0) {
 		return -1;
 	}
-	scalliontor_setLogging();
+//	scalliontor_setLogging();
 
 	  /* load the private keys, if we're supposed to have them, and set up the
 	   * TLS context. */
@@ -890,4 +890,8 @@ int intercept_crypto_global_cleanup(void) {
 	 * other stuff may be able to be cleaned up in g_module_unload(), but that
 	 * is called once per thread which still may piss off openssl. */
 	return 0;
+}
+
+void intercept_mark_logs_temp(void) {
+    scalliontor_setLogging();
 }

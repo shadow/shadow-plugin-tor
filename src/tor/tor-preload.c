@@ -22,15 +22,16 @@ typedef int (*rep_hist_bandwidth_assess_fp)();
 typedef int (*router_get_advertised_bandwidth_capped_fp)(void*);
 typedef int (*event_base_loopexit_fp)();
 typedef int (*crypto_global_cleanup_fp)(void);
+typedef void (*mark_logs_temp_fp)(void);
 
 /* the key used to store each threads version of their searched function library.
  * the use this key to retrieve this library when intercepting functions from tor.
  */
-GStaticPrivate scallionWorkerKey;
+GStaticPrivate threadWorkerKey;
 
-typedef struct _ScallionPreloadWorker ScallionPreloadWorker;
+typedef struct _TorPreloadWorker TorPreloadWorker;
 /* TODO fix func names */
-struct _ScallionPreloadWorker {
+struct _TorPreloadWorker {
 	GModule* handle;
 	tor_open_socket_fp a;
 	tor_gettimeofday_fp b;
@@ -39,18 +40,20 @@ struct _ScallionPreloadWorker {
 	router_get_advertised_bandwidth_capped_fp f;
 	event_base_loopexit_fp g;
 	crypto_global_cleanup_fp h;
+	mark_logs_temp_fp i;
+	mark_logs_temp_fp j;
 };
 
 /* scallionpreload_init must be called before this so the worker gets created */
-static ScallionPreloadWorker* _scallionpreload_getWorker() {
+static TorPreloadWorker* _scallionpreload_getWorker() {
 	/* get current thread's private worker object */
-	ScallionPreloadWorker* worker = g_static_private_get(&scallionWorkerKey);
+	TorPreloadWorker* worker = g_static_private_get(&threadWorkerKey);
 	g_assert(worker);
 	return worker;
 }
 
-static ScallionPreloadWorker* _scallionpreload_newWorker(GModule* handle) {
-	ScallionPreloadWorker* worker = g_new0(ScallionPreloadWorker, 1);
+static TorPreloadWorker* _scallionpreload_newWorker(GModule* handle) {
+	TorPreloadWorker* worker = g_new0(TorPreloadWorker, 1);
 	worker->handle = handle;
 	return worker;
 }
@@ -63,7 +66,7 @@ static ScallionPreloadWorker* _scallionpreload_newWorker(GModule* handle) {
  */
 
 void scallionpreload_init(GModule* handle) {
-	ScallionPreloadWorker* worker = _scallionpreload_newWorker(handle);
+	TorPreloadWorker* worker = _scallionpreload_newWorker(handle);
 
 	/* lookup all our required symbols in this worker's module, asserting success */
 	g_assert(g_module_symbol(handle, TOR_LIB_PREFIX "tor_open_socket", (gpointer*)&(worker->a)));
@@ -73,8 +76,10 @@ void scallionpreload_init(GModule* handle) {
 	g_assert(g_module_symbol(handle, TOR_LIB_PREFIX "router_get_advertised_bandwidth_capped", (gpointer*)&(worker->f)));
 	g_assert(g_module_symbol(handle, TOR_LIB_PREFIX "event_base_loopexit", (gpointer*)&(worker->g)));
 	g_assert(g_module_symbol(handle, TOR_LIB_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->h)));
+    g_assert(g_module_symbol(handle, TOR_LIB_PREFIX "mark_logs_temp", (gpointer*)&(worker->i)));
+    g_assert(g_module_symbol(handle, "mark_logs_temp", (gpointer*)&(worker->j)));
 
-	g_static_private_set(&scallionWorkerKey, worker, g_free);
+	g_static_private_set(&threadWorkerKey, worker, g_free);
 }
 
 int tor_open_socket(int domain, int type, int protocol) {
@@ -104,4 +109,9 @@ int event_base_loopexit(gpointer base, const struct timeval * t) {
 
 int crypto_global_cleanup(void) {
 	return _scallionpreload_getWorker()->h();
+}
+
+void mark_logs_temp(void) {
+    _scallionpreload_getWorker()->j(); // call real tor mark_logs_temp function
+    _scallionpreload_getWorker()->i(); // reset our log callback
 }
