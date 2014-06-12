@@ -13,6 +13,7 @@ find_package(GLIB REQUIRED)
 #find_package(TOR REQUIRED)
 get_filename_component(TOR_ROOT_DIR "${CMAKE_BINARY_DIR}/../tor" ABSOLUTE)
 #set(TOR_ROOT_DIR ${CMAKE_BINARY_DIR}/tor)
+#set(TOR_ROOT ${TORPATH})
 include_directories(${TOR_ROOT_DIR})
 include_directories(${TOR_ROOT_DIR}/src)
 include_directories(${TOR_ROOT_DIR}/src/common)
@@ -23,6 +24,16 @@ include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INC
 
 ## import shadow libs
 #INCLUDE(${CMAKE_INSTALL_PREFIX}/share/shadow/shadow-externals.cmake)
+
+set(TOR_VERSION "${TOR_VERSION_A}.${TOR_VERSION_B}.${TOR_VERSION_C}.${TOR_VERSION_D}")
+MESSAGE(STATUS "Found Tor path = ${TOR_ROOT_DIR}")
+MESSAGE(STATUS "Found Tor version = ${TOR_VERSION}")
+
+## check env to see if we should allow interposition ion EVP_Cipher
+if(SHADOW_ENABLE_EVPCIPHER STREQUAL ON)
+    add_definitions(-DSHADOW_ENABLE_EVPCIPHER)
+    message(STATUS "Added definition SHADOW_ENABLE_EVPCIPHER")
+endif(SHADOW_ENABLE_EVPCIPHER STREQUAL ON)
 
 ## Version-specific defines to handle changes to Tor's functionality
 # version >= 0.2.3.5
@@ -105,7 +116,7 @@ add_cflags("-w")
 
 ## create and install a shared library that can plug into shadow
 add_bitcode(shadow-plugin-tor-bitcode 
-    tor-plugin.c tor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources})
+    shadowtor-plugin.c shadowtor-interpose.c shadowtor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources})
 add_plugin(shadow-plugin-tor shadow-plugin-tor-bitcode)
 
 target_link_libraries(shadow-plugin-tor
@@ -120,7 +131,7 @@ install(TARGETS shadow-plugin-tor DESTINATION plugins)
 set_target_properties(shadow-plugin-tor PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 ## preload library for intercepting functions
-add_library(shadow-preload-tor SHARED tor-preload.c)
+add_library(shadow-preload-tor SHARED shadowtor-preload.c)
 target_link_libraries(shadow-preload-tor ${GLIB_LIBRARIES} ${DL_LIBRARIES})
 install(TARGETS shadow-preload-tor DESTINATION lib)
 

@@ -4,7 +4,7 @@
  * See LICENSE for licensing information
  */
 
-#include "tor.h"
+#include "shadowtor.h"
 
 /* replacement for torflow in Tor. for now just grab the bandwidth we configured
  * in the XML and use that as the measured bandwidth value. since our configured
@@ -128,7 +128,7 @@ static void _scalliontor_refillCallback(ScallionTor* stor) {
 }
 #endif
 
-static ScallionTor* scalliontor_getPointer() {
+ScallionTor* scalliontor_getPointer() {
 	return scallion.stor;
 }
 
@@ -159,7 +159,7 @@ static void scalliontor_logmsg_cb(int severity, uint32_t domain, const char *msg
 	g_free(msg_dup);
 }
 
-static void scalliontor_setLogging() {
+void scalliontor_setLogging() {
 	/* setup a callback so we can log into shadow */
     log_severity_list_t *severity = g_new0(log_severity_list_t, 1);
     /* we'll log everything according to Shadow's filter */
@@ -811,87 +811,4 @@ void scalliontor_newCPUWorker(ScallionTor* stor, int fd) {
 	/* setup event so we will get a callback */
 	event_assign(&(cpuw->read_event), tor_libevent_get_base(), cpuw->fd, EV_READ|EV_PERSIST, scalliontor_readCPUWorkerCallback, cpuw);
 	event_add(&(cpuw->read_event), NULL);
-}
-
-/*
- * Tor function interceptions
- */
-
-int intercept_event_base_loopexit(struct event_base * base, const struct timeval * t) {
-	ScallionTor* stor = scalliontor_getPointer();
-	g_assert(stor);
-
-	scalliontor_loopexit(stor);
-	return 0;
-}
-
-int intercept_tor_open_socket(int domain, int type, int protocol)
-{
-  int s = socket(domain, type | SOCK_NONBLOCK, protocol);
-  if (s >= 0) {
-    socket_accounting_lock();
-    ++n_sockets_open;
-//    mark_socket_open(s);
-    socket_accounting_unlock();
-  }
-  return s;
-}
-
-void intercept_tor_gettimeofday(struct timeval *timeval) {
-	struct timespec tp;
-	clock_gettime(CLOCK_REALTIME, &tp);
-	timeval->tv_sec = tp.tv_sec;
-	timeval->tv_usec = tp.tv_nsec/1000;
-}
-
-int intercept_spawn_func(void (*func)(void *), void *data)
-{
-	ScallionTor* stor = scalliontor_getPointer();
-	g_assert(stor);
-
-	/* this takes the place of forking a cpuworker and running cpuworker_main.
-	 * func points to cpuworker_main, but we'll implement a version that
-	 * works in shadow */
-	int *fdarray = data;
-	int fd = fdarray[1]; /* this side is ours */
-
-	scalliontor_newCPUWorker(stor, fd);
-
-	/* now we should be ready to receive events in vtor_cpuworker_readable */
-	return 0;
-}
-
-/* this function is where the relay will return its bandwidth and send to auth.
- * this should be computing an estimate of the relay's actual bandwidth capacity.
- * let the maximum 10 second rolling average bytes be MAX10S; then, this should compute:
- * min(MAX10S read, MAX10S write) */
-int intercept_rep_hist_bandwidth_assess() {
-	ScallionTor* stor = scalliontor_getPointer();
-	g_assert(stor);
-
-	/* return BW in bytes. tor will divide the value we return by 1000 and put it in the descriptor. */
-	return stor->bandwidth;
-}
-
-/* this is the authority function to compute the consensus "w Bandwidth" line */
-uint32_t intercept_router_get_advertised_bandwidth_capped(const routerinfo_t *router)
-{
-  /* this is what the relay told us. dont worry about caps, since this bandwidth
-   * is authoritative in our sims */
-  return router->bandwidthcapacity;
-}
-
-int intercept_crypto_global_cleanup(void) {
-	/* FIXME: we need to clean up all of the node-specific state while only
-	 * calling the global openssl cleanup funcs once.
-	 *
-	 * node-specific state can be cleaned up here
-	 *
-	 * other stuff may be able to be cleaned up in g_module_unload(), but that
-	 * is called once per thread which still may piss off openssl. */
-	return 0;
-}
-
-void intercept_mark_logs_temp(void) {
-    scalliontor_setLogging();
 }

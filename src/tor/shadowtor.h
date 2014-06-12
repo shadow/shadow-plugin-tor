@@ -264,12 +264,20 @@ struct _Scallion {
 	gchar hostname[128];
 	ScallionTor* stor;
 	ShadowFunctionTable* shadowlibFuncs;
+	gboolean opensslThreadSupport;
+    gboolean libeventThreadSupport;
+    gboolean libeventHasError;
 };
 
 extern Scallion scallion;
 #undef log
 
-void scallionpreload_init(GModule* handle);
+typedef void (*GlobalCleanupFunc())();
+
+ScallionTor* scalliontor_getPointer();
+
+void shadowtorpreload_init(GModule* handle, gint nLocks);
+void shadowtorpreload_clear((*cleanupFunc()));
 
 ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
 		enum vtor_nodetype type, gint consensusWeight, gint torargc, gchar* torargv[]);

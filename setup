@@ -153,6 +153,11 @@ def main():
         help="export Shadow's plug-in service libraries and headers", 
         action="store_true", dest="export_libraries",
         default=False)
+        
+    parser_build.add_argument('--enable-evp-cipher-encryption', 
+        help="do not intercept EVP_Cipher, so that we allow EVP_Cipher encryption to be performed as normal during simulation", 
+        action="store_true", dest="enable_evpcipher",
+        default=False)
        
     # configure install subcommand
     parser_install = subparsers_main.add_parser('install', help='install Shadow', 
@@ -258,11 +263,11 @@ def build(args):
     cmake_cmd = "cmake " + rootdir + " -DCMAKE_INSTALL_PREFIX=" + installdir
 
     # other cmake options
-    if args.do_debug: cmake_cmd += " -DSHADOW_DEBUG=ON"
     if args.do_verbose: os.putenv("VERBOSE", "1")
     if args.do_test: cmake_cmd += " -DSHADOW_TEST=ON"
     if args.do_profile: cmake_cmd += " -DSHADOW_PROFILE=ON"
     if args.export_libraries: cmake_cmd += " -DSHADOW_EXPORT=ON"
+    if args.enable_evpcipher: cmake_cmd += " -DSHADOW_ENABLE_EVPCIPHER=ON"
 
     # we will run from build directory
     calledDirectory = os.getcwd()
@@ -274,7 +279,7 @@ def build(args):
     args.tordir = getfullpath(builddir+"/tor")
 
     if setup_tor(args) != 0: return -1
-    cmake_cmd += " -DSCALLION_TORPATH=" + args.tordir
+    #cmake_cmd += " -DTORPATH=" + args.tordir
     
     torversion = get_tor_version(args)
     if torversion == None: return -1

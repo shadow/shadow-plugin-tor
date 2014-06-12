@@ -24,6 +24,7 @@ def main():
     ap.add_argument('-c', '--compress', action="store", dest="compress", help="use N xz threads to compress the logfile inline", metavar="N", default=0)
     ap.add_argument('-r', '--reset', action="store_true", dest="reset", help="reset data directory and exit", default=False)
     ap.add_argument('-y', '--assume-yes', action="store_true", dest="clear", help="don't ask before resetting data directory", default=False)
+    ap.add_argument('-a', '--enable-aesni', action="store_true", dest="aesni", help="enable AES-NI cipher functions in OpenSSL", default=False)
     
     # get arguments, accessible with args.value
     args, unknown_args = ap.parse_known_args()
@@ -63,6 +64,10 @@ def main():
     os.putenv("EVENT_NOEVPORT", "1")
     os.putenv("EVENT_NOWIN32", "1")
     log("set environmental variables for libevent: EVENT_NOSELECT, EVENT_NOPOLL, EVENT_NOKQUEUE, EVENT_NODEVPOLL, EVENT_NOEVPORT, EVENT_NOWIN32")
+    
+    if not args.aesni:
+        os.putenv("OPENSSL_ia32cap", "~0x200000200000000")
+        log("set environmental variable for openssl: OPENSSL_ia32cap=~0x200000200000000")
         
     # run paths
     shadowpath = os.path.abspath("{0}/bin/shadow".format(args.prefix))

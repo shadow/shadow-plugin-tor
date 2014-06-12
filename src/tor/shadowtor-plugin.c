@@ -4,9 +4,11 @@
  * See LICENSE for licensing information
  */
 
-#include "tor.h"
 #include <openssl/rand.h>
 #include <event2/thread.h>
+#include <netinet/in.h>
+
+#include "shadowtor.h"
 
 /* my global structure to hold all variable, node-specific application state.
  * the name must not collide with other loaded modules globals. */
@@ -94,6 +96,9 @@ static void _scallion_notify() {
 	scalliontor_notify(scallion.stor);
 }
 
+typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
+typedef unsigned long (*CRYPTO_id_func)(void);
+
 /* called immediately after the plugin is loaded. shadow loads plugins once for
  * each worker thread. the GModule* is needed as a handle for g_module_symbol()
  * symbol lookups.
@@ -102,15 +107,46 @@ const gchar* g_module_check_init(GModule *module) {
 	/* clear our memory before initializing */
 	memset(&scallion, 0, sizeof(Scallion));
 
-	/* do all the symbol lookups we will need now, and init our thread-specific
-	 * library of intercepted functions. */
-	scallionpreload_init(module);
+    /* handle multi-threading support*/
+
+#define OPENSSL_THREAD_DEFINES
+#include <openssl/opensslconf.h>
+#if defined(OPENSSL_THREADS)
+    /* thread support enabled, how many locks does openssl want */
+    int nLocks = CRYPTO_num_locks();
+
+    /* do all the symbol lookups we will need now, and init thread-specific
+     * library of intercepted functions, init our global openssl locks. */
+    shadowtorpreload_init(module, nLocks);
+
+    /* make sure openssl uses Shadow's random sources and make crypto thread-safe
+     * get function pointers through LD_PRELOAD */
+    const RAND_METHOD* shadowtor_randomMethod = RAND_get_rand_method();
+    CRYPTO_lock_func shadowtor_lockFunc = CRYPTO_get_locking_callback();
+    CRYPTO_id_func shadowtor_idFunc = CRYPTO_get_id_callback();
+
+    CRYPTO_set_locking_callback(shadowtor_lockFunc);
+    CRYPTO_set_id_callback(shadowtor_idFunc);
+    RAND_set_rand_method(shadowtor_randomMethod);
+
+    scallion.opensslThreadSupport = 1;
+#else
+    /* no thread support */
+    scallion.opensslThreadSupport = 0;
+#endif
+
+    /* setup libevent locks */
+#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
+    scallion.libeventThreadSupport = 1;
+    if(evthread_use_pthreads()) {
+        scallion.libeventHasError = 1;
+    }
+#else
+    scallion.libeventThreadSupport = 0;
+#endif
 
 	return NULL;
 }
-
-typedef void (*CRYPTO_lock_func)(int mode,int type, const char *file,int line);
-typedef unsigned long (*CRYPTO_id_func)(void);
 
 /* called after g_module_check_init(), after shadow searches for __shadow_plugin_init__ */
 void __shadow_plugin_init__(ShadowFunctionTable* shadowlibFuncs) {
@@ -120,50 +156,24 @@ void __shadow_plugin_init__(ShadowFunctionTable* shadowlibFuncs) {
 	/* tell shadow which functions it should call to manage nodes */
 	shadowlibFuncs->registerPlugin(&_scallion_new, &_scallion_free, &_scallion_notify);
 
+	/* log a message through Shadow's logging system */
 	shadowlibFuncs->log(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "finished registering scallion plug-in state");
 
-	/* setup openssl locks */
-
-#define OPENSSL_THREAD_DEFINES
-#include <openssl/opensslconf.h>
-#if defined(OPENSSL_THREADS)
-	/* thread support enabled */
-
-	/* make sure openssl uses Shadow's random sources and make crypto thread-safe */
-	const RAND_METHOD* shadowRandomMethod = NULL;
-	CRYPTO_lock_func shadowLockFunc = NULL;
-	CRYPTO_id_func shadowIdFunc = NULL;
-	int nLocks = CRYPTO_num_locks();
-
-	gboolean success = shadowlibFuncs->cryptoSetup(nLocks, (gpointer*)&shadowLockFunc,
-			(gpointer*)&shadowIdFunc, (gconstpointer*)&shadowRandomMethod);
-	if(!success) {
-		/* ok, lets see if we can get shadow function pointers through LD_PRELOAD */
-		shadowRandomMethod = RAND_get_rand_method();
-		shadowLockFunc = CRYPTO_get_locking_callback();
-		shadowIdFunc = CRYPTO_get_id_callback();
+	/* print results of library initialization */
+	if(scallion.opensslThreadSupport) {
+	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "initialized openssl with thread support");
+	} else {
+	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "please rebuild openssl with threading support. expect segfaults.");
 	}
 
-	CRYPTO_set_locking_callback(shadowLockFunc);
-	CRYPTO_set_id_callback(shadowIdFunc);
-	RAND_set_rand_method(shadowRandomMethod);
-
-	shadowlibFuncs->log(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "finished initializing crypto thread state");
-#else
-    /* no thread support */
-	shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "please rebuild openssl with threading support. expect segfaults.");
-#endif
-
-	/* setup libevent locks */
-
-#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
-	if(evthread_use_pthreads()) {
-		shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "error in evthread_use_pthreads()");
+	if(scallion.libeventThreadSupport) {
+	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "initialized libevent with thread support using evthread_use_pthreads()");
+	} else {
+	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "please rebuild libevent with threading support, or link with event_pthread. expect segfaults.");
 	}
-	shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "finished initializing event thread state evthread_use_pthreads()");
-#else
-	shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "please rebuild libevent with threading support, or link with event_pthread. expect segfaults.");
-#endif
+	if(scallion.libeventHasError) {
+	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "there was an error in evthread_use_pthreads()");
+	}
 }
 
 static void _scallion_cleanupOpenSSL() {
@@ -171,9 +181,9 @@ static void _scallion_cleanupOpenSSL() {
 	ERR_remove_state(0);
 	ERR_free_strings();
 
-	#ifndef DISABLE_ENGINES
-	  ENGINE_cleanup();
-	#endif
+#ifndef DISABLE_ENGINES
+	ENGINE_cleanup();
+#endif
 
 	CONF_modules_unload(1);
 	CRYPTO_cleanup_all_ex_data();
@@ -183,7 +193,7 @@ static void _scallion_cleanupOpenSSL() {
  * once for each worker thread.
  */
 void g_module_unload(GModule *module) {
-	/* TODO check if the following is safe to call once per thread */
-	//_scallion_cleanupOpenSSL();
+	/* _scallion_cleanupOpenSSL should only be called once globally */
+    shadowtorpreload_clear(&_scallion_cleanupOpenSSL);
 	memset(&scallion, 0, sizeof(Scallion));
 }
