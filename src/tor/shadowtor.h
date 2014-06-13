@@ -277,7 +277,7 @@ typedef void (*GlobalCleanupFunc())();
 ScallionTor* scalliontor_getPointer();
 
 void shadowtorpreload_init(GModule* handle, gint nLocks);
-void shadowtorpreload_clear((*cleanupFunc()));
+void shadowtorpreload_clear();
 
 ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
 		enum vtor_nodetype type, gint consensusWeight, gint torargc, gchar* torargv[]);

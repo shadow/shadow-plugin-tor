@@ -71,20 +71,28 @@ uint32_t shadowtorinterpose_router_get_advertised_bandwidth_capped(const routeri
   return router->bandwidthcapacity;
 }
 
-int shadowtorinterpose_crypto_global_cleanup(void) {
-    /* FIXME: we need to clean up all of the node-specific state while only
-     * calling the global openssl cleanup funcs once.
-     *
-     * node-specific state can be cleaned up here
-     *
-     * other stuff may be able to be cleaned up in g_module_unload(), but that
-     * is called once per thread which still may piss off openssl. */
-    return 0;
-}
-
 void shadowtorinterpose_mark_logs_temp(void) {
     scalliontor_setLogging();
 }
+
+
+/* we need to init and clean up all of the node-specific state while only
+ * calling the global openssl init and cleanup funcs once.
+ *
+ * node-specific state can be inited and cleaned up here
+ *
+ * other stuff can be cleaned up in _shadowtorpreload_cryptoSetup() and
+ * _shadowtorpreload_cryptoTeardown() as those ensure a single execution globally.
+ *
+ * TODO: for now we ignore node-specific cleanup
+ */
+int shadowtorinterpose_crypto_global_init(int useAccel, const char *accelName, const char *accelDir) {
+    return 0;
+}
+int shadowtorinterpose_crypto_global_cleanup(void) {
+    return 0;
+}
+
 
 /**
  * Crypto optimizations when running Tor in Shadow.

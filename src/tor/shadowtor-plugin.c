@@ -176,24 +176,11 @@ void __shadow_plugin_init__(ShadowFunctionTable* shadowlibFuncs) {
 	}
 }
 
-static void _scallion_cleanupOpenSSL() {
-	EVP_cleanup();
-	ERR_remove_state(0);
-	ERR_free_strings();
-
-#ifndef DISABLE_ENGINES
-	ENGINE_cleanup();
-#endif
-
-	CONF_modules_unload(1);
-	CRYPTO_cleanup_all_ex_data();
-}
-
 /* called immediately after the plugin is unloaded. shadow unloads plugins
  * once for each worker thread.
  */
 void g_module_unload(GModule *module) {
 	/* _scallion_cleanupOpenSSL should only be called once globally */
-    shadowtorpreload_clear(&_scallion_cleanupOpenSSL);
+    shadowtorpreload_clear();
 	memset(&scallion, 0, sizeof(Scallion));
 }

@@ -23,6 +23,7 @@ typedef int (*tor_gettimeofday_fp)(struct timeval *);
 typedef int (*spawn_func_fp)();
 typedef int (*rep_hist_bandwidth_assess_fp)();
 typedef int (*router_get_advertised_bandwidth_capped_fp)(void*);
+typedef int (*crypto_global_init_fp)(int, const char*, const char*);
 typedef int (*crypto_global_cleanup_fp)(void);
 typedef void (*mark_logs_temp_fp)(void);
 
@@ -54,6 +55,7 @@ struct _InterposeFuncs {
 	spawn_func_fp spawn_func;
 	rep_hist_bandwidth_assess_fp rep_hist_bandwidth_assess;
 	router_get_advertised_bandwidth_capped_fp router_get_advertised_bandwidth_capped;
+	crypto_global_init_fp crypto_global_init;
 	crypto_global_cleanup_fp crypto_global_cleanup;
 	mark_logs_temp_fp mark_logs_temp;
 
@@ -105,7 +107,7 @@ static PreloadWorker* _shadowtorpreload_getWorker() {
 
 /* forward declarations */
 static void _shadowtorpreload_cryptoSetup(int);
-static void _shadowtorpreload_cryptoTeardown((*cleanupFunc()));
+static void _shadowtorpreload_cryptoTeardown();
 
 /*
  * here we search and save pointers to the functions we need to call when
@@ -137,11 +139,14 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
 	g_assert(g_module_symbol(handle, "router_get_advertised_bandwidth_capped", (gpointer*)&(worker->tor.router_get_advertised_bandwidth_capped)));
     g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "router_get_advertised_bandwidth_capped", (gpointer*)&(worker->shadowtor.router_get_advertised_bandwidth_capped)));
 
-	g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
-    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->shadowtor.crypto_global_cleanup)));
-
     g_assert(g_module_symbol(handle, "mark_logs_temp", (gpointer*)&(worker->tor.mark_logs_temp)));
 	g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "mark_logs_temp", (gpointer*)&(worker->shadowtor.mark_logs_temp)));
+
+    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->tor.crypto_global_init)));
+    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_init", (gpointer*)&(worker->shadowtor.crypto_global_init)));
+
+	g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
+    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->shadowtor.crypto_global_cleanup)));
 
 	/* libevent */
 
@@ -197,9 +202,9 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
     _shadowtorpreload_cryptoSetup(nLocks);
 }
 
-void shadowtorpreload_clear((*cleanupFunc())) {
+void shadowtorpreload_clear() {
     /* the glib thread private worker is freed automatically */
-    _shadowtorpreload_cryptoTeardown(cleanupFunc);
+    _shadowtorpreload_cryptoTeardown();
 }
 
 /* interposition happens below */
@@ -226,10 +231,6 @@ int rep_hist_bandwidth_assess(void) {
 
 uint32_t router_get_advertised_bandwidth_capped(void *router) {
 	return _shadowtorpreload_getWorker()->shadowtor.router_get_advertised_bandwidth_capped(router);
-}
-
-int crypto_global_cleanup(void) {
-	return _shadowtorpreload_getWorker()->shadowtor.crypto_global_cleanup();
 }
 
 void mark_logs_temp(void) {
@@ -358,13 +359,41 @@ const void* RAND_SSLeay() {
 typedef struct _PreloadGlobal PreloadGlobal;
 struct _PreloadGlobal {
     gboolean initialized;
+    gint nTorCryptoNodes;
     gint nThreads;
     gint numCryptoThreadLocks;
     GRWLock* cryptoThreadLocks;
 };
 
 G_LOCK_DEFINE_STATIC(shadowtorpreloadGlobalLock);
-PreloadGlobal shadowtorpreloadGlobalState = {FALSE, 0, 0, NULL};
+PreloadGlobal shadowtorpreloadGlobalState = {FALSE, 0, 0, 0, NULL};
+
+/**
+ * these init and cleanup Tor functions are called to handle openssl.
+ * they must be globally locked and only called once globally to avoid openssl errors.
+ */
+int crypto_global_init(int useAccel, const char *accelName, const char *accelDir) {
+    G_LOCK(shadowtorpreloadGlobalLock);
+
+    gint result = 0;
+    if(++shadowtorpreloadGlobalState.nTorCryptoNodes == 1) {
+        result = _shadowtorpreload_getWorker()->tor.crypto_global_init(useAccel, accelName, accelDir);
+    }
+
+    G_UNLOCK(shadowtorpreloadGlobalLock);
+    return result;
+}
+int crypto_global_cleanup(void) {
+    G_LOCK(shadowtorpreloadGlobalLock);
+
+    gint result = 0;
+    if(--shadowtorpreloadGlobalState.nTorCryptoNodes == 0) {
+        result = _shadowtorpreload_getWorker()->tor.crypto_global_cleanup();
+    }
+
+    G_UNLOCK(shadowtorpreloadGlobalLock);
+    return result;
+}
 
 static unsigned long _shadowtorpreload_getIDFunc() {
     /* return an ID that is unique for each thread */
@@ -420,14 +449,12 @@ static void _shadowtorpreload_cryptoSetup(int numLocks) {
     G_UNLOCK(shadowtorpreloadGlobalLock);
 }
 
-static void _shadowtorpreload_cryptoTeardown((*cleanupFunc())) {
+static void _shadowtorpreload_cryptoTeardown() {
     G_LOCK(shadowtorpreloadGlobalLock);
 
-    if(shadowtorpreloadGlobalState.initialized && shadowtorpreloadGlobalState.cryptoThreadLocks &&
+    if(shadowtorpreloadGlobalState.initialized &&
+            shadowtorpreloadGlobalState.cryptoThreadLocks &&
             --shadowtorpreloadGlobalState.nThreads == 0) {
-        if(cleanupFunc) {
-            cleanupFunc();
-        }
 
         for(int i = 0; i < shadowtorpreloadGlobalState.numCryptoThreadLocks; i++) {
             g_rw_lock_clear(&(shadowtorpreloadGlobalState.cryptoThreadLocks[i]));
@@ -441,3 +468,6 @@ static void _shadowtorpreload_cryptoTeardown((*cleanupFunc())) {
     G_UNLOCK(shadowtorpreloadGlobalLock);
 }
 
+/********************************************************************************
+ * end code that supports multi-threaded openssl.
+ ********************************************************************************/
