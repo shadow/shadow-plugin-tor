@@ -28,6 +28,10 @@ sed -i${bext} '/char \*fake_hostname/{N;/SSL_set_tlsext/{N;/tor_free/ i if(!isSe
 ;a }
 }}' src/common/tortls.c
 
+sed -i 's/SSL_library_init();/tor_ssl_global_init();/g' src/common/tortls.c
+sed -i 's/SSL_load_error_strings();//g' src/common/tortls.c
+sed -i ':a;N;$!ba;s/static void\ntor_tls_init(void)/void tor_ssl_global_init()\{if (!tls_library_is_initialized) \{SSL_library_init();SSL_load_error_strings();\}\}\nstatic void\ntor_tls_init(void)/g' src/common/tortls.c
+
 echo "Patching or/circuitbuild.c"
 # divide by zero error
 sed -i${bext} '/ret \/= bin_counts/i if(bin_counts == 0) bin_counts = 1;' src/or/circuitbuild.c

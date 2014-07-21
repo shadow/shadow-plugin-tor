@@ -25,6 +25,7 @@ typedef int (*rep_hist_bandwidth_assess_fp)();
 typedef int (*router_get_advertised_bandwidth_capped_fp)(void*);
 typedef int (*crypto_global_init_fp)(int, const char*, const char*);
 typedef int (*crypto_global_cleanup_fp)(void);
+typedef void (*tor_ssl_global_init_fp)(void);
 typedef void (*mark_logs_temp_fp)(void);
 
 /* libevent functions */
@@ -57,6 +58,7 @@ struct _InterposeFuncs {
 	router_get_advertised_bandwidth_capped_fp router_get_advertised_bandwidth_capped;
 	crypto_global_init_fp crypto_global_init;
 	crypto_global_cleanup_fp crypto_global_cleanup;
+	tor_ssl_global_init_fp tor_ssl_global_init;
 	mark_logs_temp_fp mark_logs_temp;
 
 	event_base_loopexit_fp event_base_loopexit;
@@ -143,10 +145,11 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
 	g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "mark_logs_temp", (gpointer*)&(worker->shadowtor.mark_logs_temp)));
 
     g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->tor.crypto_global_init)));
-    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_init", (gpointer*)&(worker->shadowtor.crypto_global_init)));
-
 	g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
-    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->shadowtor.crypto_global_cleanup)));
+    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->tor.tor_ssl_global_init)));
+//    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_init", (gpointer*)&(worker->shadowtor.crypto_global_init)));
+//    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->shadowtor.crypto_global_cleanup)));
+
 
 	/* libevent */
 
@@ -377,6 +380,7 @@ int crypto_global_init(int useAccel, const char *accelName, const char *accelDir
 
     gint result = 0;
     if(++shadowtorpreloadGlobalState.nTorCryptoNodes == 1) {
+        _shadowtorpreload_getWorker()->tor.tor_ssl_global_init();
         result = _shadowtorpreload_getWorker()->tor.crypto_global_init(useAccel, accelName, accelDir);
     }
 
@@ -393,6 +397,10 @@ int crypto_global_cleanup(void) {
 
     G_UNLOCK(shadowtorpreloadGlobalLock);
     return result;
+}
+
+void tor_ssl_global_init() {
+    // do nothing, we initialized openssl above in crypto_global_init
 }
 
 static unsigned long _shadowtorpreload_getIDFunc() {
