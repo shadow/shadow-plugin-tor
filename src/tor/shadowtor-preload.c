@@ -34,20 +34,20 @@ typedef int (*event_base_loopexit_fp)();
 
 /* openssl functions */
 
-typedef void (*AESEncryptFunc)(const unsigned char*, unsigned char*, const void*);
-typedef void (*AESDecryptFunc)(const unsigned char*, unsigned char*, const void*);
-typedef void (*AESCtr128EncryptFunc)(const unsigned char*, unsigned char*, const void*);
-typedef void (*AESCtr128DecryptFunc)(const unsigned char*, unsigned char*, const void*);
-typedef int (*EVPCipherFunc)(void*, unsigned char*, const unsigned char*, unsigned int);
-typedef void (*RANDSeedFunc)(const void*, int);
-typedef void (*RANDAddFunc)(const void*, int, double);
-typedef int (*RANDPollFunc)();
-typedef int (*RANDBytesFunc)(unsigned char*, int);
-typedef int (*RANDPseudoBytesFunc)(unsigned char*, int);
-typedef void (*RANDCleanupFunc)();
-typedef int (*RANDStatusFunc)();
-typedef const void* (*RANDGetRandMethodFunc)();
-typedef const void* (*RANDSSLeayFunc)();
+typedef void (*AES_encrypt_fp)(const unsigned char*, unsigned char*, const void*);
+typedef void (*AES_decrypt_fp)(const unsigned char*, unsigned char*, const void*);
+typedef void (*AES_ctr128_encrypt_fp)(const unsigned char*, unsigned char*, const void*);
+typedef void (*AES_ctr128_decrypt_fp)(const unsigned char*, unsigned char*, const void*);
+typedef int (*EVP_Cipher_fp)(void*, unsigned char*, const unsigned char*, unsigned int);
+typedef void (*RAND_seed_fp)(const void*, int);
+typedef void (*RAND_add_fp)(const void*, int, double);
+typedef int (*RAND_poll_fp)();
+typedef int (*RAND_bytes_fp)(unsigned char*, int);
+typedef int (*RAND_pseudo_bytes_fp)(unsigned char*, int);
+typedef void (*RAND_cleanup_fp)();
+typedef int (*RAND_status_fp)();
+typedef const void* (*RAND_get_rand_method_fp)();
+typedef const void* (*RAND_SSLeay_fp)();
 
 typedef struct _InterposeFuncs InterposeFuncs;
 struct _InterposeFuncs {
@@ -63,21 +63,21 @@ struct _InterposeFuncs {
 
 	event_base_loopexit_fp event_base_loopexit;
 
-    AESEncryptFunc AES_encrypt;
-    AESDecryptFunc AES_decrypt;
-    AESCtr128EncryptFunc AES_ctr128_encrypt;
-    AESCtr128DecryptFunc AES_ctr128_decrypt;
-    EVPCipherFunc EVP_Cipher;
+    AES_encrypt_fp AES_encrypt;
+    AES_decrypt_fp AES_decrypt;
+    AES_ctr128_encrypt_fp AES_ctr128_encrypt;
+    AES_ctr128_decrypt_fp AES_ctr128_decrypt;
+    EVP_Cipher_fp EVP_Cipher;
 
-    RANDSeedFunc RAND_seed;
-    RANDAddFunc RAND_add;
-    RANDPollFunc RAND_poll;
-    RANDBytesFunc RAND_bytes;
-    RANDPseudoBytesFunc RAND_pseudo_bytes;
-    RANDCleanupFunc RAND_cleanup;
-    RANDStatusFunc RAND_status;
-    RANDGetRandMethodFunc RAND_get_rand_method;
-    RANDSSLeayFunc RAND_SSLeay;
+    RAND_seed_fp RAND_seed;
+    RAND_add_fp RAND_add;
+    RAND_poll_fp RAND_poll;
+    RAND_bytes_fp RAND_bytes;
+    RAND_pseudo_bytes_fp RAND_pseudo_bytes;
+    RAND_cleanup_fp RAND_cleanup;
+    RAND_status_fp RAND_status;
+    RAND_get_rand_method_fp RAND_get_rand_method;
+    RAND_SSLeay_fp RAND_SSLeay;
 };
 
 typedef struct _PreloadWorker PreloadWorker;
