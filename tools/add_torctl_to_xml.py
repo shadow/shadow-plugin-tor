@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-# takes a xml topology file and adds a torcontrol application for each client.
-# torcontrol is used in log mode to log the controller events specified herein
+# takes a xml topology file and adds a torctl application for each tor node.
+# torctl logs information from tor via the controller events specified herein.
 
 import sys
 from lxml import etree
@@ -17,10 +17,11 @@ root = tree.getroot()
 
 p = etree.SubElement(root, "plugin")
 p.set("id", "torctl")
-p.set("path", "~/.shadow/plugins/libshadow-plugin-torcontrol.so")
+p.set("path", "~/.shadow/plugins/libshadow-plugin-torctl.so")
 
 for n in root.iterchildren("node"):
-    if 'client' in n.get("id"):
+    nodeid = n.get("id")
+    if 'client' in nodeid or 'relay' in nodeid or 'thority' in nodeid:
         # get the time scallion starts
         starttime = None
         for a in n.iterchildren("application"):
@@ -28,14 +29,14 @@ for n in root.iterchildren("node"):
                 starttime = a.get("starttime")
                 if starttime is None: starttime = a.get("time")
 
-        # create our torcontrol app 10 seconds after scallion
+        # create our torctl app 10 seconds after scallion
         if starttime is not None:
             starttime = str(int(starttime) + 10)
             a = etree.SubElement(n, "application")
             a.set("plugin", "torctl")
             a.set("starttime", starttime)
-            # available events: STREAM,CIRC,ORCONN,BW,STREAM_BW,OR_BW,DIR_BW,EXIT_BW,CELL_STATS
-            a.set("arguments", "single localhost 9051 log STREAM")
+            # available events: STREAM,CIRC,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,TB_EMPTY,CELL_STATS
+            a.set("arguments", "localhost 9051 STREAM,CIRC,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,TB_EMPTY,CELL_STATS")
 
 with open(outfname, 'wb') as outf:
     print >>outf, (etree.tostring(root, pretty_print=True, xml_declaration=False))
