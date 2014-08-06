@@ -798,11 +798,11 @@ void scalliontor_newCPUWorker(ScallionTor* stor, int fd) {
 
 	cpuw->fd = fd;
 	cpuw->state = CPUW_NONE;
+#ifdef SCALLION_USEV2CPUWORKER
 	cpuw->magic1 = SCALLION_CPUWORKER_MAGIC1;
 	cpuw->magic2 = SCALLION_CPUWORKER_MAGIC2;
 	cpuw->magic3 = SCALLION_CPUWORKER_MAGIC3;
 
-#ifdef SCALLION_USEV2CPUWORKER
 	setup_server_onion_keys(&(cpuw->onion_keys));
 #else
 	dup_onion_keys(&(cpuw->onion_key), &(cpuw->last_onion_key));
