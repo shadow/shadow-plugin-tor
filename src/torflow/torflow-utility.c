@@ -98,6 +98,7 @@ GString* torflowutil_base64ToBase16(GString* base64) {
 	for (gint i = 0; i < *bin_len; i++) {
 		g_string_append_printf(base16, "%02x", base2[i]);
 	}
+	base16 = g_string_ascii_up(base16);
 	g_free(base2);
 	g_free(bin_len);
 	return base16;
