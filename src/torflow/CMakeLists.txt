@@ -2,6 +2,8 @@ find_package(GLIB REQUIRED)
 
 include_directories(AFTER ${GLIB_INCLUDES})
 
+add_definitions( -DTESTING )
+
 ## torflow plug-in
 set(sources
     torflow-plugin.c

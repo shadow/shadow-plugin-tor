@@ -20,6 +20,18 @@ static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 	g_assert(tfp);
 	gdouble lowPct = tfp->internal->sliceSize * tfp->internal->currSlice / (gdouble)(tfp->internal->numRelays);
 	gchar* fname;
+
+#ifdef TESTING
+	if (lowPct < 0.25) {
+		fname = "/256KiB.urnd";
+	} else if (lowPct < 0.5) {
+		fname = "/128KiB.urnd";
+	} else if (lowPct < 0.75) {
+		fname = "/64KiB.urnd";
+	} else {
+		fname = "/32KiB.urnd";
+	}
+#else
 	/* This is based not on the spec, but on the file read by TorFlow,
 	 * NetworkScanners/BwAuthority/data/bwfiles. */
 	if (lowPct < 0.01) {
@@ -39,6 +51,7 @@ static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 	} else {
 		fname = "/32KiB.urnd";
 	}
+#endif
 	torflow_startDownload((TorFlow*)tfp, tfp->internal->sybil->downloadSD, fname);
 }
 
