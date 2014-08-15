@@ -185,7 +185,7 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	  /* load the private keys, if we're supposed to have them, and set up the
 	   * TLS context. */
 	gpointer idkey;
-#ifdef SCALLION_DOREFILLCALLBACKS // FIXME this doesnt change in 0.2.3.5-alpha like SCALLION_DOREFILL is meant to (not sure when it changed)
+#ifdef SCALLION_NEWIDKEYNAME
 	idkey = client_identitykey;
 #else
 	idkey = identitykey;

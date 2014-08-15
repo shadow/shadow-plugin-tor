@@ -109,7 +109,13 @@ extern int stats_prev_global_read_bucket;
 extern periodic_timer_t * second_timer;
 extern periodic_timer_t * refill_timer;
 extern smartlist_t * active_linked_connection_lst;
+#ifdef SCALLION_NEWIDKEYNAME
+#ifdef SCALLION_NEWCRYPTODEFS
 extern crypto_pk_t * client_identitykey;
+#else
+extern crypto_pk_env_t * client_identitykey;
+#endif
+#endif
 extern int called_loop_once;
 
 enum vtor_nodetype {
@@ -226,8 +232,13 @@ typedef struct vtor_cpuworker_s {
   char reply_to_proxy[ONIONSKIN_REPLY_LEN];
   char buf[LEN_ONION_RESPONSE];
   char tag[TAG_LEN];
+#ifdef SCALLION_NEWCRYPTODEFS
   crypto_pk_t *onion_key;
   crypto_pk_t *last_onion_key;
+#else
+  crypto_pk_env_t *onion_key;
+  crypto_pk_env_t *last_onion_key;
+#endif
   struct event read_event;
   uint offset;
   enum cpuwstate state;

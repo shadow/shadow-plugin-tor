@@ -72,6 +72,7 @@ sed -i 's/static smartlist_t \*active_linked_connection_lst/smartlist_t \*active
 echo "Patching or/router.c"
 # static variable
 sed -i${bext} 's/static crypto_pk_t \*client_identitykey/crypto_pk_t \*client_identitykey/g' src/or/router.c
+sed -i${bext} 's/static crypto_pk_env_t \*client_identitykey/crypto_pk_env_t \*client_identitykey/g' src/or/router.c
 
 echo "Patching or/control.c"
 # comments out checking for single hop exists in the tor controller
