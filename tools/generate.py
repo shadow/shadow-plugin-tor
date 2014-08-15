@@ -1019,6 +1019,7 @@ SocksPort 0\n' # note - also need exit policy
     epreject = 'ExitPolicy "reject *:*"\n'
     epaccept = 'ExitPolicy "accept *:*"\n'
     maxdirty = 'MaxCircuitDirtiness 10 seconds\n'
+    noguards = 'UseEntryGuards 0\n'
     with open("authority.torrc", 'wb') as f: print >>f, common + authorities + epreject
     if args.nbridgeauths > 0:
         with open("bridgeauthority.torrc", 'wb') as f: print >>f, common + bridgeauths + epreject
@@ -1031,7 +1032,7 @@ SocksPort 0\n' # note - also need exit policy
     with open("client.torrc", 'wb') as f: print >>f, common + clients
     if args.nbridgeclients > 0:
         with open("bridgeclient.torrc", 'wb') as f: print >>f, common + clients + bridgeclients
-    with open("torperf.torrc", 'wb') as f: print >>f, common + clients + maxdirty
+    with open("torperf.torrc", 'wb') as f: print >>f, common + clients + maxdirty + noguards
     log("finished generating torrc files")
 
 ## helper - test if program is in path
