@@ -78,6 +78,12 @@ if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} E
     add_definitions(-DSCALLION_NOV2DIR)
     message(STATUS "Added definition SCALLION_NOV2DIR")
 endif()
+# version >= 0.2.5.5, commit 39d4e67be8283b2a7141a7aa8342d30e27f47e6f
+if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 5 AND ${TOR_VERSION_D} GREATER 5) OR
+    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 5))
+    add_definitions(-DSCALLION_MEMPOOLOPT)
+    message(STATUS "Added definition SCALLION_MEMPOOLOPT")
+endif()
 
 ## get tor source files, but ignore some of them
 aux_source_directory(${TOR_ROOT_DIR}/src/common torcommon_sources)

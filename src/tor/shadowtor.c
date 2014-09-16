@@ -197,8 +197,14 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	  }
     }
 
-	/* Set up the packed_cell_t memory pool. */
+    /* Set up the packed_cell_t memory pool. */
+#ifdef SCALLION_MEMPOOLOPT
+#ifdef ENABLE_MEMPOOLS
 	init_cell_pool();
+#endif
+#else
+	init_cell_pool();
+#endif
 
 	/* Set up our buckets */
 	connection_bucket_init();
