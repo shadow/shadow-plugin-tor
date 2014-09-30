@@ -11,6 +11,7 @@ struct _TorFlowProberInternal {
 	GSList* relays;
 	gint thinktime;
 	gint sliceSize;
+	gdouble nodeCap;
 	gint currSlice;
 	gint numRelays;
 	gint numSlices;
@@ -21,7 +22,10 @@ static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 	gdouble lowPct = tfp->internal->sliceSize * tfp->internal->currSlice / (gdouble)(tfp->internal->numRelays);
 	gchar* fname;
 
-#ifdef TESTING
+#ifdef SMALLFILES
+	/* Have torflow download smaller files than the real Torflow does.
+	 * This improves actual running time but should have little/no effect on
+	 * simulated timings. */
 	if (lowPct < 0.25) {
 		fname = "/256KiB.urnd";
 	} else if (lowPct < 0.5) {
@@ -96,6 +100,8 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 		torflowbase_reportMeasurements((TorFlowBase*) tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
 		tfp->internal->currSlice++;
 		if (tfp->internal->currSlice >= tfp->internal->numSlices) {
+			// Do aggregation step
+			torflowbase_aggregateToFile((TorFlowBase*) tfp, tfp->internal->nodeCap);
 
 			// Prepare for next measurement and schedule it for the future
 			//g_slist_foreach(tfp->internal->relays, (GFunc)torflowutil_resetRelay, NULL);
@@ -210,7 +216,8 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 }
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		gint thinktime, gint sliceSize, gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
+		gint thinktime, gint sliceSize, gdouble nodeCap, 
+		gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
 
 	TorFlowEventCallbacks events;
 	memset(&events, 0, sizeof(TorFlowEventCallbacks));
@@ -227,6 +234,7 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	tfp->internal = g_new0(TorFlowProberInternal, 1);
 	tfp->internal->thinktime = thinktime;
 	tfp->internal->sliceSize = sliceSize;
+	tfp->internal->nodeCap = nodeCap;
 	tfp->internal->currSlice = 0;
 	tfp->internal->sybil = g_new0(TorFlowSybil, 1);
 	tfp->internal->sybil->fileserver = fileserver;

@@ -13,13 +13,13 @@ struct _TorFlowManager {
 };
 
 static const gchar* USAGE = "USAGE:\n"
-	"  torflow thinktime slicesize ctlport:socksport fileserver:fileport,... \n";
+	"  torflow thinktime slicesize node_cap ctlport:socksport fileserver:fileport,... \n";
 
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf) {
 	g_assert(slogf);
 	g_assert(scbf);
 
-	if(argc < 5 || argc > 7) {
+	if(argc < 6 || argc > 8) {
 		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
 		return NULL;
 	}
@@ -40,7 +40,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 
 	/* get file server infos */
 	GQueue* fileservers = g_queue_new();
-	gchar** fsparts = g_strsplit(argv[4], ",", 0);
+	gchar** fsparts = g_strsplit(argv[5], ",", 0);
 	gchar* fspart = NULL;
 	for(gint i = 0; (fspart = fsparts[i]) != NULL; i++) {
 		TorFlowFileServer* fs = g_new0(TorFlowFileServer, 1);
@@ -60,17 +60,19 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	g_strfreev(fsparts);
 
 	gint probeControlPort = 0, probeSocksPort = 0, thinktime = 0, slicesize = 0;
+	gdouble nodeCap = 0.0;
 
 	thinktime = atoi(argv[1]);
 	slicesize = atoi(argv[2]);
-	gchar** portparts = g_strsplit(argv[3], ":", 0);
+	nodeCap = atof(argv[3]);
+	gchar** portparts = g_strsplit(argv[4], ":", 0);
 	probeControlPort = atoi(portparts[0]);
 	probeSocksPort = atoi(portparts[1]);
 	g_strfreev(portparts);
 
 	TorFlowFileServer* probeFileServer = g_queue_pop_head(fileservers);
 
-	tfm->tfp = torflowprober_new(slogf, scbf, thinktime, slicesize,
+	tfm->tfp = torflowprober_new(slogf, scbf, thinktime, slicesize, nodeCap,
 			probeControlPort, probeSocksPort, probeFileServer);
 	tfm->tfped = torflow_getEpollDescriptor((TorFlow*)tfm->tfp);
 

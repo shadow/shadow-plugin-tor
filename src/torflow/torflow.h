@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <errno.h>
+#include <math.h>
 
 #include <glib.h>
 #include <shd-library.h>
@@ -40,6 +41,8 @@ typedef struct _TorFlowRelay {
 	GString * nickname;
 	GString * identity;
 	gint descriptorBandwidth;
+	gint advertisedBandwidth;
+	gint newBandwidth;
 	gboolean exit;
 	gboolean running;
 	gboolean fast;
@@ -86,6 +89,7 @@ void torflowbase_start(TorFlowBase* tfb);
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events);
 void torflowbase_requestInfo(TorFlowBase* tfb);
 void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currSlice);
+void torflowbase_aggregateToFile(TorFlowBase* tfb, gdouble nodeCap);
 gint torflowbase_getControlSD(TorFlowBase* tfb);
 gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gint sliceSize, gint currSlice);
 void torflowbase_closeCircuit(TorFlowBase* tfb, gint circid);
@@ -120,7 +124,8 @@ struct _TorFlowProber {
 };
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		gint thinktime, gint sliceSize, gint controlPort, gint socksPort, TorFlowFileServer* fileserver);
+		gint thinktime, gint sliceSize, gdouble nodeCap,
+		gint controlPort, gint socksPort, TorFlowFileServer* fileserver);
 
 typedef struct _TorFlowManager TorFlowManager;
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf);

@@ -4,6 +4,8 @@
 
 #include "torflow.h"
 
+#define REPORT_FILENAME "v3bw"
+
 typedef enum {
 	C_NONE, C_AUTH, C_BOOTSTRAP, C_MAIN
 } TorFlowControlState;
@@ -222,6 +224,8 @@ static void _torflowbase_processDescriptorLine(TorFlowBase* tfb, GString* linebu
 		case 'w':
 			tfb->internal->tempRelay->descriptorBandwidth = 
 						atoi(g_strstr_len(linebuf->str, linebuf->len, "Bandwidth=") + 10);
+			/* normally we would use advertised BW, but that is not available */
+			tfb->internal->tempRelay->advertisedBandwidth = tfb->internal->tempRelay->descriptorBandwidth;
 			if(tfb->internal->tempRelay->fast && tfb->internal->tempRelay->running) {
 				tfb->internal->relays = g_slist_insert_sorted(tfb->internal->relays, 
 						tfb->internal->tempRelay, _torflowbase_compareRelays);
@@ -307,10 +311,12 @@ static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
 	}
 }
 
-/* This function reports all measurements taken in the current slice
- * by dumping them to disk. It also prints the measurements to the log.
- * The filename will be wonky for the final report. */
+/* This function reports all measurements taken in the current slice.
+ * It prints the measurements to the log, and would also print them to disk if this were
+ * real torflow. */
 void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currSlice) {
+
+/*
 	// Calculate the name of the file on disc
 	gdouble startPct, stopPct;
 	startPct = 100.0 * sliceSize * currSlice / (gdouble)(tfb->internal->numRelays);
@@ -337,7 +343,8 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 
 	// print file header
 	fprintf(fp, "slicenum=%i\n", currSlice);
-	fprintf(fp, "%li\n", now_ts.tv_sec); 
+	fprintf(fp, "%li\n", now_ts.tv_sec);
+*/
 	tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i measurements:", currSlice);
 
 	// loop through measurements and print data
@@ -350,23 +357,22 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 						GPOINTER_TO_INT(current->bytesPushed->data),
 						GPOINTER_TO_INT(current->t_total->data));
 			gint meanBW = torflowutil_meanBandwidth(current);
-
-			/* normally we would use advertised bw for desc_bw, but that is not available
-			 * fortunately, we don't need it in the calculations anyway */
+/*
 			fprintf(fp, "node_id=%s nick=%s strm_bw=%i filt_bw=%i desc_bw=%i ns_bw=%i\n",
 						current->identity->str,
 						current->nickname->str,
 						meanBW,
 						torflowutil_filteredBandwidth(current, meanBW),
-						current->descriptorBandwidth,
+						current->advertisedBandwidth,
 						current->descriptorBandwidth);
+*/
 			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
 						"node_id=%s nick=%s strm_bw=%i filt_bw=%i desc_bw=%i ns_bw=%i\n",
 						current->identity->str,
 						current->nickname->str,
 						meanBW,
 						torflowutil_filteredBandwidth(current, meanBW),
-						current->descriptorBandwidth,
+						current->advertisedBandwidth,
 						current->descriptorBandwidth);
 		} else {
 			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "%s: unmeasured", current->nickname->str);
@@ -374,8 +380,67 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 		i++;
 		currentNode = g_slist_next(currentNode);
 	}
+/*
 	fclose(fp);
 	g_free(fileName);
+*/
+}
+
+void torflowbase_aggregateToFile(TorFlowBase* tfb, gdouble nodeCap) {
+	// loop through measured nodes  and aggregate stats
+	gint totalMeanBW = 0;
+	gint totalFiltBW = 0;
+	gint measuredNodes = 0;
+	for (GSList* currentNode = tfb->internal->relays; currentNode; currentNode = g_slist_next(currentNode)) {
+		TorFlowRelay* current = currentNode->data;
+		if (current->measureCount > 0) {
+			gint meanBW = torflowutil_meanBandwidth(current);
+			totalMeanBW += meanBW;
+			totalFiltBW += torflowutil_filteredBandwidth(current, meanBW);
+			measuredNodes++;
+		}
+	}
+
+	gdouble avgMeanBW = (gdouble)totalMeanBW/measuredNodes;
+	gdouble avgFiltBW = (gdouble)totalFiltBW/measuredNodes;
+	gint totalBW = 0;
+
+	//loop through nodes and calculate new bandwidths
+	for (GSList* currentNode = tfb->internal->relays; currentNode; currentNode = g_slist_next(currentNode)) {
+		TorFlowRelay* current = currentNode->data;
+		if (current->measureCount > 0) {
+			gint meanBW = torflowutil_meanBandwidth(current);
+			gint filtBW = torflowutil_filteredBandwidth(current, meanBW);
+			//use the better of the mean and filtered ratios, because that's what torflow does
+			current->newBandwidth = (gint)(current->advertisedBandwidth * fmax(meanBW/avgMeanBW, filtBW/avgFiltBW));
+			totalBW += current->newBandwidth;
+		}
+	}
+
+	//loop through nodes and cap bandwidths that are too large, then print to file
+	struct timespec now_ts;
+	clock_gettime(CLOCK_REALTIME, &now_ts);
+	FILE * fp;
+	fp = fopen(REPORT_FILENAME, "w");
+	fprintf(fp, "%li\n", now_ts.tv_sec);
+
+	for (GSList* currentNode = tfb->internal->relays; currentNode; currentNode = g_slist_next(currentNode)) {
+		TorFlowRelay* current = currentNode->data;
+		if (current->measureCount > 0) {
+			if (current->newBandwidth > (gint)(totalBW * nodeCap)){
+				tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+						"Capping bandwidth for extremely fast relay %s\n",
+						current->nickname->str);
+				current->newBandwidth = (gint)(totalBW * nodeCap);
+			}
+
+			fprintf(fp, "node_id=$%s bw=%i nick=%s\n",
+					current->identity->str,
+					current->newBandwidth,
+					current->nickname->str);
+		}
+	}
+	fclose(fp);
 }
 
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
