@@ -4,7 +4,7 @@
 
 #include "torflow.h"
 
-#define REPORT_FILENAME "v3bw"
+#define REPORT_FILENAME "./v3bw"
 
 typedef enum {
 	C_NONE, C_AUTH, C_BOOTSTRAP, C_MAIN
