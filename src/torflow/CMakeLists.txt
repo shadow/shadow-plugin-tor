@@ -12,6 +12,7 @@ set(sources
     torflow-base.c
     torflow.c
     torflow-prober.c
+    torflow-aggregator.c
     torflow-utility.c
 )
 

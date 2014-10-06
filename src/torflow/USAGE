@@ -1,8 +1,10 @@
 Torflow arguments should be configured as follows:
-	arguments="thinktime workers sliceSize nodeCap socksPort:ctlPort server:port"
+	arguments="filename thinktime workers sliceSize nodeCap socksPort:ctlPort server:port"
 
 The arguments are listed below, along with the value used by real TorFlow if
 applicable, and an explanation.
+
+filename The path to which the output v3bw file should be written.
 
 thinktime (0) The amount of time in seconds to wait between complete network
 scans. Useful for speeding up debug trials, especially in the minimal case.

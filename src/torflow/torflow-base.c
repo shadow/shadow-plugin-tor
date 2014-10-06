@@ -4,8 +4,6 @@
 
 #include "torflow.h"
 
-#define REPORT_FILENAME "./v3bw"
-
 typedef enum {
 	C_NONE, C_AUTH, C_BOOTSTRAP, C_MAIN
 } TorFlowControlState;
@@ -384,63 +382,6 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 	fclose(fp);
 	g_free(fileName);
 */
-}
-
-void torflowbase_aggregateToFile(TorFlowBase* tfb, gdouble nodeCap) {
-	// loop through measured nodes  and aggregate stats
-	gint totalMeanBW = 0;
-	gint totalFiltBW = 0;
-	gint measuredNodes = 0;
-	for (GSList* currentNode = tfb->internal->relays; currentNode; currentNode = g_slist_next(currentNode)) {
-		TorFlowRelay* current = currentNode->data;
-		if (current->measureCount > 0) {
-			gint meanBW = torflowutil_meanBandwidth(current);
-			totalMeanBW += meanBW;
-			totalFiltBW += torflowutil_filteredBandwidth(current, meanBW);
-			measuredNodes++;
-		}
-	}
-
-	gdouble avgMeanBW = (gdouble)totalMeanBW/measuredNodes;
-	gdouble avgFiltBW = (gdouble)totalFiltBW/measuredNodes;
-	gint totalBW = 0;
-
-	//loop through nodes and calculate new bandwidths
-	for (GSList* currentNode = tfb->internal->relays; currentNode; currentNode = g_slist_next(currentNode)) {
-		TorFlowRelay* current = currentNode->data;
-		if (current->measureCount > 0) {
-			gint meanBW = torflowutil_meanBandwidth(current);
-			gint filtBW = torflowutil_filteredBandwidth(current, meanBW);
-			//use the better of the mean and filtered ratios, because that's what torflow does
-			current->newBandwidth = (gint)(current->advertisedBandwidth * fmax(meanBW/avgMeanBW, filtBW/avgFiltBW));
-			totalBW += current->newBandwidth;
-		}
-	}
-
-	//loop through nodes and cap bandwidths that are too large, then print to file
-	struct timespec now_ts;
-	clock_gettime(CLOCK_REALTIME, &now_ts);
-	FILE * fp;
-	fp = fopen(REPORT_FILENAME, "w");
-	fprintf(fp, "%li\n", now_ts.tv_sec);
-
-	for (GSList* currentNode = tfb->internal->relays; currentNode; currentNode = g_slist_next(currentNode)) {
-		TorFlowRelay* current = currentNode->data;
-		if (current->measureCount > 0) {
-			if (current->newBandwidth > (gint)(totalBW * nodeCap)){
-				tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-						"Capping bandwidth for extremely fast relay %s\n",
-						current->nickname->str);
-				current->newBandwidth = (gint)(totalBW * nodeCap);
-			}
-
-			fprintf(fp, "node_id=$%s bw=%i nick=%s\n",
-					current->identity->str,
-					current->newBandwidth,
-					current->nickname->str);
-		}
-	}
-	fclose(fp);
 }
 
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {

@@ -5,6 +5,8 @@
 #ifndef TORFLOW_H_
 #define TORFLOW_H_
 
+#define MEASUREMENTS_PER_SLICE 5
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -89,7 +91,6 @@ void torflowbase_start(TorFlowBase* tfb);
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events);
 void torflowbase_requestInfo(TorFlowBase* tfb);
 void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currSlice);
-void torflowbase_aggregateToFile(TorFlowBase* tfb, gdouble nodeCap);
 gint torflowbase_getControlSD(TorFlowBase* tfb);
 gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gint sliceSize, gint currSlice);
 void torflowbase_closeCircuit(TorFlowBase* tfb, gint circid);
@@ -100,16 +101,23 @@ void torflowbase_enableCircuits(TorFlowBase* tfb);
 void torflowbase_closeStreams(TorFlowBase* tfb, gchar* addressString);
 void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid);
 
+typedef struct _TorFlowAggregator TorFlowAggregator;
+
+void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measuredRelays, gint workerID);
+void torflowaggregator_free(TorFlowAggregator* tfa);
+TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gint numWorkers, gdouble nodeCap);
+
 typedef struct _TorFlow TorFlow;
 typedef struct _TorFlowInternal TorFlowInternal;
 struct _TorFlow {
 	TorFlowBase _base;
+	TorFlowAggregator* tfa;
 	TorFlowInternal* internal;
 };
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		gint controlPort, gint socksPort);
+		TorFlowAggregator* tfa, gint controlPort, gint socksPort);
 gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver);
 void torflow_freeDownload(TorFlow* tf, gint socksd);
 void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath);
@@ -124,8 +132,8 @@ struct _TorFlowProber {
 };
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		gint workerID, gint numWorkers,
-		gint thinktime, gint sliceSize, gdouble nodeCap,
+		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
+		gint thinktime, gint sliceSize,
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver);
 
 typedef struct _TorFlowManager TorFlowManager;

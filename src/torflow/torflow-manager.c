@@ -8,19 +8,20 @@ struct _TorFlowManager {
 	gint ed;
 	ShadowLogFunc slogf;
 	ShadowCreateCallbackFunc scbf;
+	TorFlowAggregator* tfa;
 	TorFlowProber** tfps;
 	gint* tfpeds;
 	gint workers;
 };
 
 static const gchar* USAGE = "USAGE:\n"
-	"  torflow thinktime workers slicesize node_cap ctlport:socksport fileserver:fileport,... \n";
+	"  torflow filename thinktime workers slicesize node_cap ctlport:socksport fileserver:fileport,... \n";
 
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf) {
 	g_assert(slogf);
 	g_assert(scbf);
 
-	if(argc < 7 || argc > 9) {
+	if(argc < 8 || argc > 10) {
 		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
 		return NULL;
 	}
@@ -36,7 +37,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 
 	/* get file server infos */
 	GQueue* fileservers = g_queue_new();
-	gchar** fsparts = g_strsplit(argv[6], ",", 0);
+	gchar** fsparts = g_strsplit(argv[7], ",", 0);
 	gchar* fspart = NULL;
 	for(gint i = 0; (fspart = fsparts[i]) != NULL; i++) {
 		TorFlowFileServer* fs = g_new0(TorFlowFileServer, 1);
@@ -58,10 +59,10 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	gint probeControlPort = 0, probeSocksPort = 0, thinktime = 0, slicesize = 0;
 	gdouble nodeCap = 0.0;
 
-	thinktime = atoi(argv[1]);
-	slicesize = atoi(argv[3]);
-	nodeCap = atof(argv[4]);
-	gchar** portparts = g_strsplit(argv[5], ":", 0);
+	thinktime = atoi(argv[2]);
+	slicesize = atoi(argv[4]);
+	nodeCap = atof(argv[5]);
+	gchar** portparts = g_strsplit(argv[6], ":", 0);
 	probeControlPort = atoi(portparts[0]);
 	probeSocksPort = atoi(portparts[1]);
 	g_strfreev(portparts);
@@ -72,7 +73,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	tfm->ed = mainEpollDescriptor;
 	tfm->slogf = slogf;
 	tfm->scbf = scbf;
-	tfm->workers = atoi(argv[2]);
+	tfm->workers = atoi(argv[3]);
 	if(tfm->workers < 1) {
 		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
 			"Invalid number of torflow workers (%d). torflow will not operate.",
@@ -81,13 +82,14 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 		tfm->tfpeds = NULL;
 		return tfm;
 	}
-	
+	slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "%s", argv[1]);
+	tfm->tfa = torflowaggregator_new(slogf, argv[1], tfm->workers, nodeCap);
 	tfm->tfps = g_new0(TorFlowProber*, tfm->workers);
 	tfm->tfpeds = g_new0(int, tfm->workers);
 	for(gint i = 0; i < tfm->workers; i++) {
-		tfm->tfps[i] = torflowprober_new(slogf, scbf,
+		tfm->tfps[i] = torflowprober_new(slogf, scbf, tfm->tfa,
 				i, tfm->workers,
-				thinktime, slicesize, nodeCap,
+				thinktime, slicesize,
 				probeControlPort, probeSocksPort, probeFileServer);
 		tfm->tfpeds[i] = torflow_getEpollDescriptor((TorFlow*)tfm->tfps[i]);
 		torflowutil_epoll(tfm->ed, tfm->tfpeds[i], EPOLL_CTL_ADD,
@@ -130,6 +132,10 @@ void torflowmanager_ready(TorFlowManager* tfm) {
 
 void torflowmanager_free(TorFlowManager* tfm) {
 	g_assert(tfm);
+
+	if(tfm->tfa) {
+		torflowaggregator_free(tfm->tfa);
+	}
 
 	if(tfm->tfps) {
 		for(gint i = 0; i < tfm->workers; i++) {

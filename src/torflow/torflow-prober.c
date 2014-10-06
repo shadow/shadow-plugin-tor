@@ -4,8 +4,6 @@
 
 #include "torflow.h"
 
-#define MEASUREMENTS_PER_SLICE 5
-
 struct _TorFlowProberInternal {
 	TorFlowSybil* sybil;
 	GSList* relays;
@@ -13,7 +11,6 @@ struct _TorFlowProberInternal {
 	gint numWorkers;
 	gint thinktime;
 	gint sliceSize;
-	gdouble nodeCap;
 	gint currSlice;
 	gint numRelays;
 	gint minSlice;
@@ -103,8 +100,8 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 		torflowbase_reportMeasurements((TorFlowBase*) tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
 		tfp->internal->currSlice++;
 		if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
-			// Do aggregation step
-			torflowbase_aggregateToFile((TorFlowBase*) tfp, tfp->internal->nodeCap);
+			// Report stats to aggregator
+			torflowaggregator_reportMeasurements(tfp->_tf.tfa, tfp->internal->relays, tfp->internal->workerID);
 
 			// Prepare for next measurement and schedule it for the future
 			//g_slist_foreach(tfp->internal->relays, (GFunc)torflowutil_resetRelay, NULL);
@@ -225,8 +222,8 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 }
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		gint workerID, gint numWorkers,
-		gint thinktime, gint sliceSize, gdouble nodeCap, 
+		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
+		gint thinktime, gint sliceSize,
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
 
 	TorFlowEventCallbacks events;
@@ -246,12 +243,11 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	tfp->internal->numWorkers = numWorkers;
 	tfp->internal->thinktime = thinktime;
 	tfp->internal->sliceSize = sliceSize;
-	tfp->internal->nodeCap = nodeCap;
 	tfp->internal->currSlice = 0;
 	tfp->internal->sybil = g_new0(TorFlowSybil, 1);
 	tfp->internal->sybil->fileserver = fileserver;
 
-	torflow_init((TorFlow*)tfp, &events, slogf, scbf, controlPort, socksPort);
+	torflow_init((TorFlow*)tfp, &events, slogf, scbf, tfa, controlPort, socksPort);
 
 	return tfp;
 }

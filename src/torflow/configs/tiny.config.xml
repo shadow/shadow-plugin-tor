@@ -213,7 +213,7 @@
   </node>
   <node id="torflowclient" >
   <application plugin="tor" time="1500" arguments="client 1024 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID} --GeoIPFile ~/.shadow/share/geoip -f ./client.torrc --BandwidthRate 1024000 --BandwidthBurst 1024000 --ControlPort 9998" />
-  <application plugin="torflow" time="1800" arguments="60 2 15 0.1 9998:9000 server1:80,server1:80" />
+  <application plugin="torflow" time="1800" arguments="./v3bw 60 2 15 0.1 9998:9000 server1:80,server1:80" />
   </node >
   <node id="webclient1" geocodehint="JP" typehint="client" quantity="1" cpufrequency="3200000">
     <application plugin="tor" starttime="900" arguments="client 10240 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID} --GeoIPFile ~/.shadow/share/geoip -f ./client.torrc"/>
