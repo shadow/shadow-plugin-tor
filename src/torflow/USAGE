@@ -1,11 +1,14 @@
 Torflow arguments should be configured as follows:
-	arguments="thinktime sliceSize nodeCap socksPort:ctlPort server:port"
+	arguments="thinktime workers sliceSize nodeCap socksPort:ctlPort server:port"
 
 The arguments are listed below, along with the value used by real TorFlow if
 applicable, and an explanation.
 
 thinktime (0) The amount of time in seconds to wait between complete network
 scans. Useful for speeding up debug trials, especially in the minimal case.
+
+workers (4) The number of TorFlow workers constructing measurement circuits in
+parallel.
 
 sliceSize (50) The number of relays to include in a single slice. Slices that
 contain no exit relays, or only exit nodes, are skipped completely.

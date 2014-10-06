@@ -85,10 +85,8 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	tfm->tfps = g_new0(TorFlowProber*, tfm->workers);
 	tfm->tfpeds = g_new0(int, tfm->workers);
 	for(gint i = 0; i < tfm->workers; i++) {
-		gdouble minPct = ((gdouble)i)/tfm->workers;
-		gdouble maxPct = ((gdouble)i+1.0)/tfm->workers;
 		tfm->tfps[i] = torflowprober_new(slogf, scbf,
-				minPct, maxPct,
+				i, tfm->workers,
 				thinktime, slicesize, nodeCap,
 				probeControlPort, probeSocksPort, probeFileServer);
 		tfm->tfpeds[i] = torflow_getEpollDescriptor((TorFlow*)tfm->tfps[i]);

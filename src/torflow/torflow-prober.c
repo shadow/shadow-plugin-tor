@@ -9,8 +9,8 @@
 struct _TorFlowProberInternal {
 	TorFlowSybil* sybil;
 	GSList* relays;
-	gdouble minPct;
-	gdouble maxPct;
+	gint workerID;
+	gint numWorkers;
 	gint thinktime;
 	gint sliceSize;
 	gdouble nodeCap;
@@ -122,19 +122,22 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 
 static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* relayList) {
 	g_assert(tfp);
-	tfp->internal->relays = relayList;
-	tfp->internal->numRelays = g_slist_length(relayList);
-	gint numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
 
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"Descriptors Received, Building First Circuit");
 
-	gboolean goodSlice;
-	// Calculate the first slice this worker can work on (subtract one to correct for addition in loop)
-	tfp->internal->minSlice = (gint)(numSlices * tfp->internal->minPct);
-	tfp->internal->maxSlice = (gint)(numSlices * tfp->internal->maxPct);
+	tfp->internal->relays = relayList;
+	tfp->internal->numRelays = g_slist_length(relayList);
+
+	// Calculate the first slice this worker can work on
+	gint numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
+	gdouble minPct = ((gdouble)tfp->internal->workerID)/tfp->internal->numWorkers;
+	gdouble maxPct = ((gdouble)tfp->internal->workerID+1.0)/tfp->internal->numWorkers;
+	tfp->internal->minSlice = (gint)(numSlices * minPct);
+	tfp->internal->maxSlice = (gint)(numSlices * maxPct);
 	tfp->internal->currSlice =  tfp->internal->minSlice - 1;
 
+	gboolean goodSlice;
 	// Create the first circuit; skip the slice if the build function returns FALSE
 	do {
 		tfp->internal->currSlice++;
@@ -222,7 +225,7 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 }
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		gdouble minPct, gdouble maxPct,
+		gint workerID, gint numWorkers,
 		gint thinktime, gint sliceSize, gdouble nodeCap, 
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
 
@@ -239,8 +242,8 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 
 	TorFlowProber* tfp = g_new0(TorFlowProber, 1);
 	tfp->internal = g_new0(TorFlowProberInternal, 1);
-	tfp->internal->minPct = minPct;
-	tfp->internal->maxPct = maxPct;
+	tfp->internal->workerID = workerID;
+	tfp->internal->numWorkers = numWorkers;
 	tfp->internal->thinktime = thinktime;
 	tfp->internal->sliceSize = sliceSize;
 	tfp->internal->nodeCap = nodeCap;
