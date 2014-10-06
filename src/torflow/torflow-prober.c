@@ -9,28 +9,31 @@
 struct _TorFlowProberInternal {
 	TorFlowSybil* sybil;
 	GSList* relays;
+	gdouble minPct;
+	gdouble maxPct;
 	gint thinktime;
 	gint sliceSize;
 	gdouble nodeCap;
 	gint currSlice;
 	gint numRelays;
-	gint numSlices;
+	gint minSlice;
+	gint maxSlice;
 };
 
 static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 	g_assert(tfp);
-	gdouble lowPct = tfp->internal->sliceSize * tfp->internal->currSlice / (gdouble)(tfp->internal->numRelays);
+	gdouble percentile = tfp->internal->sliceSize * tfp->internal->currSlice / (gdouble)(tfp->internal->numRelays);
 	gchar* fname;
 
 #ifdef SMALLFILES
 	/* Have torflow download smaller files than the real Torflow does.
-	 * This improves actual running time but should have little/no effect on
+	 * This improves actual running time but should have little effect on
 	 * simulated timings. */
-	if (lowPct < 0.25) {
+	if (percentile < 0.25) {
 		fname = "/256KiB.urnd";
-	} else if (lowPct < 0.5) {
+	} else if (percentile < 0.5) {
 		fname = "/128KiB.urnd";
-	} else if (lowPct < 0.75) {
+	} else if (percentile < 0.75) {
 		fname = "/64KiB.urnd";
 	} else {
 		fname = "/32KiB.urnd";
@@ -38,19 +41,19 @@ static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 #else
 	/* This is based not on the spec, but on the file read by TorFlow,
 	 * NetworkScanners/BwAuthority/data/bwfiles. */
-	if (lowPct < 0.01) {
+	if (percentile < 0.01) {
 		fname = "/4MiB.urnd";
-	} else if (lowPct < 0.07) {
+	} else if (percentile < 0.07) {
 		fname = "/2MiB.urnd";
-	} else if (lowPct < 0.23) {
+	} else if (percentile < 0.23) {
 		fname = "/1MiB.urnd";
-	} else if (lowPct < 0.53) {
+	} else if (percentile < 0.53) {
 		fname = "/512KiB.urnd";
-	} else if (lowPct < 0.82) {
+	} else if (percentile < 0.82) {
 		fname = "/256KiB.urnd";
-	} else if (lowPct < 0.95) {
+	} else if (percentile < 0.95) {
 		fname = "/128KiB.urnd";
-	} else if (lowPct < 0.99) {
+	} else if (percentile < 0.99) {
 		fname = "/64KiB.urnd";
 	} else {
 		fname = "/32KiB.urnd";
@@ -99,14 +102,14 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 	while (doneSlice) {
 		torflowbase_reportMeasurements((TorFlowBase*) tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
 		tfp->internal->currSlice++;
-		if (tfp->internal->currSlice >= tfp->internal->numSlices) {
+		if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
 			// Do aggregation step
 			torflowbase_aggregateToFile((TorFlowBase*) tfp, tfp->internal->nodeCap);
 
 			// Prepare for next measurement and schedule it for the future
 			//g_slist_foreach(tfp->internal->relays, (GFunc)torflowutil_resetRelay, NULL);
 			tfp->internal->relays = NULL;
-			tfp->internal->currSlice = 0;
+			tfp->internal->currSlice = tfp->internal->minSlice;
 			tfp->_tf._base.scbf((BootstrapCompleteFunc)_torflowprober_onBootstrapComplete,
 					tfp, tfp->internal->thinktime*1000);
 			return;
@@ -121,22 +124,25 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 	g_assert(tfp);
 	tfp->internal->relays = relayList;
 	tfp->internal->numRelays = g_slist_length(relayList);
-	tfp->internal->numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
+	gint numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
 
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"Descriptors Received, Building First Circuit");
 
 	gboolean goodSlice;
-	tfp->internal->currSlice = -1; // To offset the increase a few lines down
+	// Calculate the first slice this worker can work on (subtract one to correct for addition in loop)
+	tfp->internal->minSlice = (gint)(numSlices * tfp->internal->minPct);
+	tfp->internal->maxSlice = (gint)(numSlices * tfp->internal->maxPct);
+	tfp->internal->currSlice =  tfp->internal->minSlice - 1;
 
 	// Create the first circuit; skip the slice if the build function returns FALSE
 	do {
 		tfp->internal->currSlice++;
 		goodSlice = torflowbase_buildNewMeasurementCircuit((TorFlowBase*)tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
-	} while (!goodSlice && tfp->internal->currSlice + 1 < tfp->internal->numSlices);
+	} while (!goodSlice && tfp->internal->currSlice + 1 < tfp->internal->maxSlice);
 
 	// Report an odd corner case where all slices are bad
-	if (tfp->internal->currSlice >= tfp->internal->numSlices) {
+	if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
 		tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_WARNING, tfp->_tf._base.id,
 			"No measureable slices for TorFlow!");
 	}
@@ -216,6 +222,7 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 }
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
+		gdouble minPct, gdouble maxPct,
 		gint thinktime, gint sliceSize, gdouble nodeCap, 
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
 
@@ -232,6 +239,8 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 
 	TorFlowProber* tfp = g_new0(TorFlowProber, 1);
 	tfp->internal = g_new0(TorFlowProberInternal, 1);
+	tfp->internal->minPct = minPct;
+	tfp->internal->maxPct = maxPct;
 	tfp->internal->thinktime = thinktime;
 	tfp->internal->sliceSize = sliceSize;
 	tfp->internal->nodeCap = nodeCap;

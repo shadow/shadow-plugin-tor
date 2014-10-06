@@ -124,6 +124,7 @@ struct _TorFlowProber {
 };
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
+		gdouble minPct, gdouble maxPct,
 		gint thinktime, gint sliceSize, gdouble nodeCap,
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver);
 
