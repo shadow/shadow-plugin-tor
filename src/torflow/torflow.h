@@ -62,6 +62,7 @@ typedef void (*MeasurementCircuitBuiltFunc)(gpointer data, gint circid);
 typedef void (*StreamNewFunc)(gpointer data, gint streamid, gint circid, gchar* targetAddress, gint targetPort);
 typedef void (*StreamSucceededFunc)(gpointer data, gint streamid, gint circid, gchar* targetAddress, gint targetPort);
 typedef void (*FileServerConnectedFunc)(gpointer data, gint socksd);
+typedef void (*FileServerTimeoutFunc)(gpointer data);
 typedef void (*FileDownloadCompleteFunc)(gpointer data, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime);
 typedef void (*FreeFunc)(gpointer data);
 typedef struct _TorFlowEventCallbacks {
@@ -71,6 +72,7 @@ typedef struct _TorFlowEventCallbacks {
 	StreamNewFunc onStreamNew;
 	StreamSucceededFunc onStreamSucceeded;
 	FileServerConnectedFunc onFileServerConnected;
+	FileServerTimeoutFunc onFileServerTimeout;
 	FileDownloadCompleteFunc onFileDownloadComplete;
 	FreeFunc onFree;
 } TorFlowEventCallbacks;
@@ -97,6 +99,7 @@ void torflowbase_closeCircuit(TorFlowBase* tfb, gint circid);
 void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint circid);
 void torflowbase_stopReading(TorFlowBase* tfb, gchar* addressString);
 void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime);
+void torflowbase_recordTimeout(TorFlowBase* tfb);
 void torflowbase_enableCircuits(TorFlowBase* tfb);
 void torflowbase_closeStreams(TorFlowBase* tfb, gchar* addressString);
 void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid);
@@ -133,7 +136,7 @@ struct _TorFlowProber {
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
 		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
-		gint thinktime, gint sliceSize,
+		gint pausetime, gint sliceSize,
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver);
 
 typedef struct _TorFlowManager TorFlowManager;

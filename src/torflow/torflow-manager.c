@@ -15,7 +15,7 @@ struct _TorFlowManager {
 };
 
 static const gchar* USAGE = "USAGE:\n"
-	"  torflow filename thinktime workers slicesize node_cap ctlport0:socksport0:ctlport1:socksport1:... fileserver:fileport \n";
+	"  torflow filename pausetime workers slicesize node_cap ctlport0:socksport0:ctlport1:socksport1:... fileserver:fileport \n";
 
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf) {
 	g_assert(slogf);
@@ -56,10 +56,10 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	}
 	g_strfreev(fsparts);
 
-	gint thinktime = 0, slicesize = 0;
+	gint pausetime = 0, slicesize = 0;
 	gdouble nodeCap = 0.0;
 
-	thinktime = atoi(argv[2]);
+	pausetime = atoi(argv[2]);
 	slicesize = atoi(argv[4]);
 	nodeCap = atof(argv[5]);
 
@@ -103,7 +103,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	for(i = 0; i < tfm->workers; i++) {
 		tfm->tfps[i] = torflowprober_new(slogf, scbf, tfm->tfa,
 				i, tfm->workers,
-				thinktime, slicesize,
+				pausetime, slicesize,
 				controlPorts[i], socksPorts[i], probeFileServer);
 		tfm->tfpeds[i] = torflow_getEpollDescriptor((TorFlow*)tfm->tfps[i]);
 	}

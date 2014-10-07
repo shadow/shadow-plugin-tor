@@ -712,6 +712,15 @@ void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize r
 	tfb->internal->exitRelay->measureCount++;
 }
 
+void torflowbase_recordTimeout(TorFlowBase* tfb) {
+	g_assert(tfb);
+
+	/* This is a buggy behavior deliberately carried over from TorFlow, where failed circuits are
+	 * counted as a "successful measurement" but have no bearing on the stats. */
+	tfb->internal->entryRelay->measureCount++;
+	tfb->internal->exitRelay->measureCount++;
+}
+
 void torflowbase_enableCircuits(TorFlowBase* tfb) {
 	g_assert(tfb);
 

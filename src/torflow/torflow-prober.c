@@ -9,7 +9,7 @@ struct _TorFlowProberInternal {
 	GSList* relays;
 	gint workerID;
 	gint numWorkers;
-	gint thinktime;
+	gint pausetime;
 	gint sliceSize;
 	gint currSlice;
 	gint numRelays;
@@ -108,7 +108,7 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 			tfp->internal->relays = NULL;
 			tfp->internal->currSlice = tfp->internal->minSlice;
 			tfp->_tf._base.scbf((BootstrapCompleteFunc)_torflowprober_onBootstrapComplete,
-					tfp, tfp->internal->thinktime*1000);
+					tfp, tfp->internal->pausetime*1000);
 			return;
 		} else {
 			// this call will return false and make us loop only if the new slice is bad
@@ -192,6 +192,18 @@ static void _torflowprober_onFileServerConnected(TorFlowProber* tfp, gint socksd
 	}
 }
 
+static void _torflowprober_onFileServerTimeout(TorFlowProber* tfp) {
+	g_assert(tfp);
+
+	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
+			"Connection Failed");
+
+	torflowbase_recordTimeout((TorFlowBase*) tfp);
+
+	/* do another probe now */
+	_torflowprober_startNextProbeCallback(tfp);
+}
+
 static void _torflowprober_onFileDownloadComplete(TorFlowProber* tfp, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime) {
 	g_assert(tfp);
 
@@ -223,7 +235,7 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
 		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
-		gint thinktime, gint sliceSize,
+		gint pausetime, gint sliceSize,
 		gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
 
 	TorFlowEventCallbacks events;
@@ -234,6 +246,7 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	events.onStreamNew = (StreamNewFunc) _torflowprober_onStreamNew;
 	events.onStreamSucceeded = (StreamSucceededFunc) _torflowprober_onStreamSucceeded;
 	events.onFileServerConnected = (FileServerConnectedFunc) _torflowprober_onFileServerConnected;
+	events.onFileServerTimeout = (FileServerTimeoutFunc) _torflowprober_onFileServerTimeout;
 	events.onFileDownloadComplete = (FileDownloadCompleteFunc) _torflowprober_onFileDownloadComplete;
 	events.onFree = (FreeFunc) _torflowprober_onFree;
 
@@ -241,7 +254,7 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	tfp->internal = g_new0(TorFlowProberInternal, 1);
 	tfp->internal->workerID = workerID;
 	tfp->internal->numWorkers = numWorkers;
-	tfp->internal->thinktime = thinktime;
+	tfp->internal->pausetime = pausetime;
 	tfp->internal->sliceSize = sliceSize;
 	tfp->internal->currSlice = 0;
 	tfp->internal->sybil = g_new0(TorFlowSybil, 1);

@@ -125,6 +125,12 @@ static void _torflow_callFileServerConnected(CallbackData* cd) {
 	g_free(cd);
 }
 
+static void _torflow_callFileServerTimeout(CallbackData* cd) {
+	g_assert(cd && cd->tf);
+	cd->tf->internal->eventHandlers.onFileServerTimeout(cd->tf);
+	g_free(cd);
+}
+
 static void _torflow_activateSocksDownload(TorFlow* tf, TorFlowDownload* tfd, uint32_t events) {
 	g_assert(tf);
 	g_assert(tfd);
@@ -214,13 +220,7 @@ beginsocks:
 			break;
 		}
 
-		if(tfd->recvbuf[0] != 0x05 || tfd->recvbuf[1] != 0x00 || tfd->recvbuf[3] != 0x01) {
-			tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"socks connect error (read %i bytes, code %x %x %x)", bytes,
-				tfd->recvbuf[0], tfd->recvbuf[1], tfd->recvbuf[2]);
-			//tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-			//	"socks connect error (read %i bytes)", bytes);
-		} else {
+		if(tfd->recvbuf[0] == 0x05 && tfd->recvbuf[1] == 0x00 && tfd->recvbuf[3] == 0x01) {
 			/* socks server may tell us to connect somewhere else ... */
 			in_addr_t serverAddress;
 			in_port_t serverPort;
@@ -242,6 +242,23 @@ beginsocks:
 				cd->socksd = tfd->socksd;
 				tf->_base.scbf((ShadowPluginCallbackFunc)_torflow_callFileServerConnected, cd, 1000);
 			}
+		} else if(tfd->recvbuf[0] == 0x05 && tfd->recvbuf[1] == 0x06 && tfd->recvbuf[2] == 0x00 && tfd->recvbuf[3] == 0x01) {
+			tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id,
+				"socks connect timed out");
+			if(tf->internal->eventHandlers.onFileServerTimeout) {
+				CallbackData* cd = g_new0(CallbackData, 1);
+				cd->tf = tf;
+				cd->socksd = 0;
+				tf->_base.scbf((ShadowPluginCallbackFunc)_torflow_callFileServerTimeout, cd, 1000);
+			}	
+		} else {
+			tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
+				"socks connect error (read %i bytes, code %x%x%x%x)", bytes,
+				tfd->recvbuf[0], tfd->recvbuf[1], tfd->recvbuf[2], tfd->recvbuf[3]);
+			//tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
+			//	"socks connect error (read %i bytes)", bytes);
+
+
 		}
 
 		/* reset */
