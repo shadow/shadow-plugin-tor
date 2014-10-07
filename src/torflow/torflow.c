@@ -216,7 +216,10 @@ beginsocks:
 
 		if(tfd->recvbuf[0] != 0x05 || tfd->recvbuf[1] != 0x00 || tfd->recvbuf[3] != 0x01) {
 			tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"socks connect error (read %i bytes)", bytes);
+				"socks connect error (read %i bytes, code %x %x %x)", bytes,
+				tfd->recvbuf[0], tfd->recvbuf[1], tfd->recvbuf[2]);
+			//tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
+			//	"socks connect error (read %i bytes)", bytes);
 		} else {
 			/* socks server may tell us to connect somewhere else ... */
 			in_addr_t serverAddress;

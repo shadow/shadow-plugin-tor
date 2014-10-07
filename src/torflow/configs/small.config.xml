@@ -452,8 +452,9 @@
     <application plugin="tor" starttime="654" arguments="relay 2 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID} --GeoIPFile ~/.shadow/share/geoip -f ./middle.torrc --BandwidthRate 102400 --BandwidthBurst 102400"/>
   </node>
   <node id="torflowclient" >
-  <application plugin="tor" time="1500" arguments="client 10240 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID} --GeoIPFile ~/.shadow/share/geoip -f ./client.torrc --ControlPort 9998" />
-  <application plugin="torflow" time="1800" arguments="./v3bw 60 2 20 0.05 9998:9000 server1:80,server1:80" />
+  <application plugin="tor" time="1500" arguments="client 10240 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID}0 --GeoIPFile ~/.shadow/share/geoip -f ./client.torrc --ControlPort 9998 --SOCKSPort 9000" />
+  <application plugin="tor" time="1500" arguments="client 10240 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID}1 --GeoIPFile ~/.shadow/share/geoip -f ./client.torrc --ControlPort 9997 --SOCKSPort 9001" />
+  <application plugin="torflow" time="1800" arguments="./v3bw 60 2 20 0.05 9998:9000:9997:9001 server1:80" />
   </node >
   <node id="webclient1" geocodehint="GB" typehint="client" quantity="1" cpufrequency="3200000">
     <application plugin="tor" starttime="900" arguments="client 10240 --quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID} --GeoIPFile ~/.shadow/share/geoip -f ./client.torrc"/>
