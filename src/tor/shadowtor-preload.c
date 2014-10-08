@@ -9,6 +9,8 @@
 #include <stdarg.h>
 #include <assert.h>
 
+#include <event2/dns.h>
+
 #include <openssl/crypto.h>
 
 #include <glib.h>
@@ -32,6 +34,7 @@ typedef void (*mark_logs_temp_fp)(void);
 /* libevent functions */
 
 typedef int (*event_base_loopexit_fp)();
+typedef struct evdns_request* (*evdns_base_resolve_ipv4_fp)(struct evdns_base*, const char*, int, evdns_callback_type, void*);
 
 /* openssl functions */
 
@@ -64,6 +67,7 @@ struct _InterposeFuncs {
 	mark_logs_temp_fp mark_logs_temp;
 
 	event_base_loopexit_fp event_base_loopexit;
+	evdns_base_resolve_ipv4_fp evdns_base_resolve_ipv4;
 
     AES_encrypt_fp AES_encrypt;
     AES_decrypt_fp AES_decrypt;
@@ -159,6 +163,7 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
 
 //	g_assert(g_module_symbol(handle, "event_base_loopexit", (gpointer*)&(worker->tor.event_base_loopexit)));
     g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "event_base_loopexit", (gpointer*)&(worker->shadowtor.event_base_loopexit)));
+    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "evdns_base_resolve_ipv4", (gpointer*)&(worker->shadowtor.evdns_base_resolve_ipv4)));
 
 
     /* openssl */
@@ -252,6 +257,11 @@ void mark_logs_temp(void) {
 /* struct event_base* base */
 int event_base_loopexit(gpointer base, const struct timeval * t) {
 	return _shadowtorpreload_getWorker()->shadowtor.event_base_loopexit(base, t);
+}
+
+struct evdns_request* evdns_base_resolve_ipv4(struct evdns_base *base, const char *name, int flags,
+    evdns_callback_type callback, void *ptr) {
+    return _shadowtorpreload_getWorker()->shadowtor.evdns_base_resolve_ipv4(base, name, flags, callback, ptr);
 }
 
 

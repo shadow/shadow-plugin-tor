@@ -4,6 +4,7 @@
  */
 
 #include <glib.h>
+#include <event2/dns.h>
 
 #include "shadowtor.h"
 
@@ -13,6 +14,30 @@ int shadowtorinterpose_event_base_loopexit(struct event_base * base, const struc
 
     scalliontor_loopexit(stor);
     return 0;
+}
+
+struct evdns_request *
+shadowtorinterpose_evdns_base_resolve_ipv4(struct evdns_base *base, const char *name, int flags,
+    evdns_callback_type callback, void *ptr) {
+
+    in_addr_t ip;
+    int success = 0;
+    if(callback) {
+        struct addrinfo* info = NULL;
+
+        int success = (0 == getaddrinfo(name, NULL, NULL, &info));
+        if (success) {
+            ip = ((struct sockaddr_in*) (info->ai_addr))->sin_addr.s_addr;
+        }
+        freeaddrinfo(info);
+    }
+
+    if(success) {
+        callback(DNS_ERR_NONE, DNS_IPv4_A, 1, 86400, &ip, ptr);
+        return (struct evdns_request *)1;
+    } else {
+        return NULL;
+    }
 }
 
 int shadowtorinterpose_tor_open_socket(int domain, int type, int protocol)
