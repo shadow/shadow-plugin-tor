@@ -195,7 +195,7 @@ beginsocks:
 		memset(sendbuf, 0, 64);
 		sendbuf[0] = 0x05;
 		sendbuf[1] = 0x01;
-		sendbuf[2] = 0x05;
+		sendbuf[2] = 0x00;
 		sendbuf[3] = 0x01;
 		memcpy(sendbuf+4, &(tfd->fileserver->address), 4);
 		memcpy(sendbuf+8, &(tfd->fileserver->port), 2);
