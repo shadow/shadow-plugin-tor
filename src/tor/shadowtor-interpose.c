@@ -76,26 +76,6 @@ int shadowtorinterpose_spawn_func(void (*func)(void *), void *data)
     return 0;
 }
 
-/* this function is where the relay will return its bandwidth and send to auth.
- * this should be computing an estimate of the relay's actual bandwidth capacity.
- * let the maximum 10 second rolling average bytes be MAX10S; then, this should compute:
- * min(MAX10S read, MAX10S write) */
-int shadowtorinterpose_rep_hist_bandwidth_assess() {
-    ScallionTor* stor = scalliontor_getPointer();
-    g_assert(stor);
-
-    /* return BW in bytes. tor will divide the value we return by 1000 and put it in the descriptor. */
-    return stor->bandwidth;
-}
-
-/* this is the authority function to compute the consensus "w Bandwidth" line */
-uint32_t shadowtorinterpose_router_get_advertised_bandwidth_capped(const routerinfo_t *router)
-{
-  /* this is what the relay told us. dont worry about caps, since this bandwidth
-   * is authoritative in our sims */
-  return router->bandwidthcapacity;
-}
-
 void shadowtorinterpose_mark_logs_temp(void) {
     scalliontor_setLogging();
 }

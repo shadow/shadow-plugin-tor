@@ -23,8 +23,6 @@
 typedef int (*tor_open_socket_fp)(int, int, int);
 typedef int (*tor_gettimeofday_fp)(struct timeval *);
 typedef int (*spawn_func_fp)();
-typedef int (*rep_hist_bandwidth_assess_fp)();
-typedef int (*router_get_advertised_bandwidth_capped_fp)(void*);
 typedef int (*crypto_global_init_fp)(int, const char*, const char*);
 typedef int (*crypto_global_cleanup_fp)(void);
 typedef int (*crypto_early_init_fp)(void);
@@ -58,8 +56,6 @@ struct _InterposeFuncs {
 	tor_open_socket_fp tor_open_socket;
 	tor_gettimeofday_fp tor_gettimeofday;
 	spawn_func_fp spawn_func;
-	rep_hist_bandwidth_assess_fp rep_hist_bandwidth_assess;
-	router_get_advertised_bandwidth_capped_fp router_get_advertised_bandwidth_capped;
 	crypto_global_init_fp crypto_global_init;
 	crypto_global_cleanup_fp crypto_global_cleanup;
     crypto_early_init_fp crypto_early_init;
@@ -140,12 +136,6 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
 
 	g_assert(g_module_symbol(handle, "spawn_func", (gpointer*)&(worker->tor.spawn_func)));
     g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "spawn_func", (gpointer*)&(worker->shadowtor.spawn_func)));
-
-	g_assert(g_module_symbol(handle, "rep_hist_bandwidth_assess", (gpointer*)&(worker->tor.rep_hist_bandwidth_assess)));
-    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "rep_hist_bandwidth_assess", (gpointer*)&(worker->shadowtor.rep_hist_bandwidth_assess)));
-
-	g_assert(g_module_symbol(handle, "router_get_advertised_bandwidth_capped", (gpointer*)&(worker->tor.router_get_advertised_bandwidth_capped)));
-    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "router_get_advertised_bandwidth_capped", (gpointer*)&(worker->shadowtor.router_get_advertised_bandwidth_capped)));
 
     g_assert(g_module_symbol(handle, "mark_logs_temp", (gpointer*)&(worker->tor.mark_logs_temp)));
 	g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "mark_logs_temp", (gpointer*)&(worker->shadowtor.mark_logs_temp)));
@@ -235,14 +225,6 @@ void tor_gettimeofday(struct timeval *timeval) {
 
 int spawn_func(void (*func)(void *), void *data) {
 	return _shadowtorpreload_getWorker()->shadowtor.spawn_func(func, data);
-}
-
-int rep_hist_bandwidth_assess(void) {
-	return _shadowtorpreload_getWorker()->shadowtor.rep_hist_bandwidth_assess();
-}
-
-uint32_t router_get_advertised_bandwidth_capped(void *router) {
-	return _shadowtorpreload_getWorker()->shadowtor.router_get_advertised_bandwidth_capped(router);
 }
 
 void mark_logs_temp(void) {

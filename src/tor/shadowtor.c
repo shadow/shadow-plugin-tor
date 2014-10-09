@@ -6,86 +6,6 @@
 
 #include "shadowtor.h"
 
-/* replacement for torflow in Tor. for now just grab the bandwidth we configured
- * in the XML and use that as the measured bandwidth value. since our configured
- * bandwidth doesnt change over time, this could just be run once (by setting the
- * time far in the future so the file is not seen as outdated). but we need to
- * run it after all routers are loaded, so its best to re-run periodically.
- *
- * eventually we will want an option to run something similar to the actual
- * torflow scripts that download files over Tor and computes bandwidth values.
- * in that case it needs to run more often to keep monitoring the actual state
- * of the network.
- *
- * torflow writes a few things to the v3bwfile. all Tor currently uses is:
- *
- * 0123456789
- * node_id=$0123456789ABCDEF0123456789ABCDEF01234567 bw=12345
- * ...
- *
- * where 0123456789 is the time, 0123456789ABCDEF0123456789ABCDEF01234567 is
- * the relay's fingerprint, and 12345 is the measured bandwidth in ?.
- */
-void scalliontor_init_v3bw(ScallionTor* stor) {
-	/* open the bw file, clearing it if it exists */
-	FILE *v3bw = fopen(stor->v3bw_name, "w");
-	if(v3bw == NULL) {
-		stor->shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
-				"v3bandwidth file not updated: can not open file '%s'\n", stor->v3bw_name);
-		return;
-	}
-
-	time_t maxtime = -1;
-
-	/* print time part on first line */
-	if(fprintf(v3bw, "%lu\n", maxtime) < 0) {
-		/* uhhhh... */
-		stor->shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
-		"v3bandwidth file not updated: can write time '%u' to file '%s'\n", maxtime, stor->v3bw_name);
-		return;
-	}
-
-	routerlist_t *rlist = router_get_routerlist();
-	routerinfo_t *rinfo;
-
-	/* print an entry for each router */
-	for (int i=0; i < smartlist_len(rlist->routers); i++) {
-		rinfo = smartlist_get(rlist->routers, i);
-
-		/* get the fingerprint from its digest */
-		char node_id[HEX_DIGEST_LEN+1];
-		base16_encode(node_id, HEX_DIGEST_LEN+1, rinfo->cache_info.identity_digest, DIGEST_LEN);
-
-		/* the network address */
-		in_addr_t netaddr = htonl(rinfo->addr);
-
-		/* ask shadow for this node's configured bandwidth */
-		guint bwdown = 0, bwup = 0;
-		stor->shadowlibFuncs->getBandwidth(netaddr, &bwdown, &bwup);
-
-		/* XXX careful here! shadow bandwidth may be different than the consensus
-		 * right now i believe this v3bw file is not used to compute the consensus
-		 * "w Bandwidth" line, and
-		 * intercept_rep_hist_bandwidth_assess and
-		 * intercept_router_get_advertised_bandwidth_capped
-		 * takes care of things. so leave it for now.
-		 */
-		guint bw = MIN(bwup, bwdown);
-
-		if(fprintf(v3bw, "node_id=$%s bw=%u\n", node_id, bw) < 0) {
-			/* uhhhh... */
-			stor->shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
-					"v3bandwidth file not updated: can write line 'node_id=$%s bw=%u\n' to file '%s'\n", node_id, bw, stor->v3bw_name);
-			return;
-		}
-	}
-
-	fclose(v3bw);
-
-	/* reschedule */
-	stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)scalliontor_init_v3bw, (gpointer)stor, VTORFLOW_SCHED_PERIOD);
-}
-
 void scalliontor_free(ScallionTor* stor) {
 	tor_cleanup();
 	g_free(stor);
@@ -307,12 +227,9 @@ static gchar* _scalliontor_getFormatedArg(gchar* argString, const gchar* home, c
 }
 
 ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
-		enum vtor_nodetype type, gint consensusWeight, gint torargc, gchar* torargv[]) {
+		gint torargc, gchar* torargv[]) {
 	ScallionTor* stor = g_new0(ScallionTor, 1);
 	stor->shadowlibFuncs = shadowlibFuncs;
-
-	stor->type = type;
-	stor->bandwidth = (unsigned int) (consensusWeight * 1000);
 
 	/* get formatted argument vector by expanding '~' and '${NODEID}' */
 	gchar* formattedArgs[torargc+1];
@@ -328,11 +245,6 @@ ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostnam
 	/* initialize tor */
 	scallion.stor = stor;
 	scalliontor_start(stor, torargc+1, formattedArgs);
-
-	if(stor->type == VTOR_DIRAUTH) {
-		/* run torflow now, it will schedule itself as needed */
-		scalliontor_init_v3bw(stor);
-	}
 
 	/* free the new strings */
 	for(gint i = 0; i < torargc+1; i++) {

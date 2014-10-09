@@ -118,13 +118,6 @@ extern crypto_pk_env_t * client_identitykey;
 #endif
 extern int called_loop_once;
 
-enum vtor_nodetype {
-  VTOR_DIRAUTH, VTOR_RELAY, VTOR_EXITRELAY, VTOR_CLIENT, VTOR_TORRENT, VTOR_BROWSER, VTOR_PING, VTOR_HSAUTH, VTOR_BRIDGEAUTH, VTOR_BRIDGE, VTOR_BRIDGECLIENT
-};
-
-/* run once per minute */
-#define VTORFLOW_SCHED_PERIOD 60000
-
 enum cpuwstate {
 	CPUW_NONE,
 	CPUW_READTYPE, CPUW_READTAG, CPUW_READCHALLENGE, CPUW_PROCESS, CPUW_WRITERESPONSE,
@@ -260,9 +253,6 @@ typedef struct vtor_logfile_s {
 
 typedef struct _ScallionTor ScallionTor;
 struct _ScallionTor {
-	char v3bw_name[255];
-	enum vtor_nodetype type;
-	unsigned int bandwidth;
 	int refillmsecs;
 	vtor_cpuworker_tp cpuw;
 	ShadowFunctionTable* shadowlibFuncs;
@@ -291,7 +281,7 @@ void shadowtorpreload_init(GModule* handle, gint nLocks);
 void shadowtorpreload_clear();
 
 ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
-		enum vtor_nodetype type, gint consensusWeight, gint torargc, gchar* torargv[]);
+		gint torargc, gchar* torargv[]);
 void scalliontor_notify(ScallionTor* stor);
 void scalliontor_free(ScallionTor* stor);
 

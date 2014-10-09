@@ -165,7 +165,7 @@ class GeoIPEntry():
         self.countrycode = countrycode
     
 def main():
-    ap = argparse.ArgumentParser(description='Generate shadow.config.xml file for Scallion Tor experiments in Shadow', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    ap = argparse.ArgumentParser(description='Generate shadow.config.xml file for Tor experiments in Shadow', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         
     # configuration options
     ap.add_argument('-p', '--prefix', action="store", dest="prefix", help="PATH to base Shadow installation", metavar="PATH", default=INSTALLPREFIX)
@@ -184,6 +184,7 @@ def main():
     ap.add_argument('--nperf5m', action="store", type=float, dest="nperf5m", help="number N of 5MiB perf clients", metavar='F', default=NPERF5M)
     ap.add_argument('--nservers', action="store", type=int, dest="nservers", help="number N of fileservers", metavar='N', default=NSERVERS)
     ap.add_argument('--dochurn', action="store_true", dest="dochurn", help="use random file selection for clients", default=DOCHURN)
+    ap.add_argument('--geoippath', action="store", dest="geoippath", help="path to geoip file, needed to convert IPs to cluster codes", default=INSTALLPREFIX+"share/geoip")
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -207,6 +208,7 @@ def main():
     args.descriptors = os.path.abspath(os.path.expanduser(args.descriptors))
     args.extrainfos = os.path.abspath(os.path.expanduser(args.extrainfos))
     args.connectingusers = os.path.abspath(os.path.expanduser(args.connectingusers))
+    args.geoippath = os.path.abspath(os.path.expanduser(args.geoippath))
 
     args.torbin = which("tor")
     args.torgencertbin = which("tor-gencert")
@@ -214,24 +216,21 @@ def main():
         log("please ensure 'tor' and 'tor-gencert' are in your 'PATH'")
         exit(-1)
     
-    # we'll need to convert IPs to cluster codes
-    args.geoippath = os.path.abspath(args.prefix+"/share/geoip")
-    
     generate(args)
-    log("finished generating:\n{0}/relays.csv\n{0}/shadow.config.xml\n{0}/im.dl\n{0}/web.dl\n{0}/bulk.dl\n{0}/webthink.dat\n{0}/imthink.dat".format(os.getcwd()))
+    log("finished generating:\n{0}/relays.csv\n{0}/shadow.config.xml\n{0}/filetransfer.im.dl\n{0}/filetransfer.web.dl\n{0}/filetransfer.bulk.dl\n{0}/filetransfer.webthink.dat\n{0}/filetransfer.imthink.dat\n{0}/filetransfer.perfthink.dat".format(os.getcwd()))
 
-def getfp(torbin, torrc):
+def getfp(torbin, torrc, name, datadir="."):
     """Run Tor with --list-fingerprint to get its fingerprint, read
     the fingerprint file and return the fingerprint. Uses current
     directory for DataDir. Returns a two-element list where the first
     element is an integer return code from running tor (0 for success)
     and the second is a string with the fingerprint, or None on
     failure."""
-    listfp = "{0} --list-fingerprint --DataDirectory . -f {1}".format(torbin, torrc)
+    listfp = "{0} --list-fingerprint --DataDirectory {2} --Nickname {3} -f {1}".format(torbin, torrc, datadir, name)
     retcode = subprocess.call(shlex.split(listfp))
     if retcode !=0: return retcode, None
     fp = None
-    with open("fingerprint", 'r') as f:
+    with open("{0}/fingerprint".format(datadir), 'r') as f:
         fp = f.readline().strip().split()[1]
         fp = " ".join(fp[i:i+4] for i in range(0, len(fp), 4))
     return 0, fp
@@ -282,13 +281,13 @@ def generate(args):
     root = etree.Element("shadow")
     
     # servers
-    fim = open("im.dl", "wb") if args.fim > 0 else None
-    fweb = open("web.dl", "wb")
-    fbulk = open("bulk.dl", "wb")
-    fall = open("all.dl", "wb")
-    fperf50k = open("50kib.dl", "wb")
-    fperf1m = open("1mib.dl", "wb")
-    fperf5m = open("5mib.dl", "wb")
+    fim = open("filetransfer.im.dl", "wb") if args.fim > 0 else None
+    fweb = open("filetransfer.web.dl", "wb")
+    fbulk = open("filetransfer.bulk.dl", "wb")
+    fall = open("filetransfer.all.dl", "wb")
+    fperf50k = open("filetransfer.50kib.dl", "wb")
+    fperf1m = open("filetransfer.1mib.dl", "wb")
+    fperf5m = open("filetransfer.5mib.dl", "wb")
     
     # for all.dl, ratio of bulk to web files needs to be about 1/10 of the
     # ratio of bulk to web users given as input, so the number of total BT
@@ -348,7 +347,7 @@ def generate(args):
     entries = range(1, int(maxthink)+1, step)
     increment = 1.0 / len(entries)
     # 1012.000 0.0062491534
-    with open("webthink.dat", "wb") as fthink:
+    with open("filetransfer.webthink.dat", "wb") as fthink:
         frac = increment
         for ms in entries:
             assert frac <= 1.0
@@ -361,7 +360,7 @@ def generate(args):
         step = 500
         entries = range(1, int(maxthink)+1, step)
         increment = 1.0 / len(entries)
-        with open("imthink.dat", "wb") as fthink:
+        with open("filetransfer.imthink.dat", "wb") as fthink:
             entries = range(1, int(maxthink)+1, step)
             frac = increment
             for ms in entries:
@@ -371,15 +370,25 @@ def generate(args):
 
     # think time file for perf clients
     ms = 60000.0 # milliseconds
-    with open("perfthink.dat", "wb") as fthink:
+    with open("filetransfer.perfthink.dat", "wb") as fthink:
         print >>fthink, "{0} {1}".format("%.3f" % ms, "%.10f" % 1.0)
 
-    default_tor_args = "--quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory ./data/${NODEID} --GeoIPFile "+INSTALLPREFIX+"share/geoip"
+    with open("shadowresolv.conf", "wb") as f: print >>f, "nameserver 4uthority1"
+
+    default_tor_args = "--quiet --Address ${NODEID} --Nickname ${NODEID} --DataDirectory data/${NODEID} --GeoIPFile "+INSTALLPREFIX+"share/geoip --defaults-torrc tor.common.torrc"
     
     # tor directory authorities - choose the fastest relays (no authority is an exit node)
     dirauths = [] # [name, v3ident, fingerprint] for torrc files
     os.makedirs("initdata")
     os.chdir("initdata")
+
+    os.makedirs("torflowauthority")
+    v3bwfile = open("torflowauthority/v3bw.init.consensus", "wb")
+    os.symlink("v3bw.init.consensus", "torflowauthority/v3bw")
+    print >>v3bwfile, "1",
+    
+    guardnames = []
+
     with open("authgen.torrc", 'w') as fauthgen: print >>fauthgen, "DirServer test 127.0.0.1:5000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000\nORPort 5000\n"
     with open("authgen.pw", 'w') as fauthgenpw: print >>fauthgenpw, "shadowprivatenetwork\n"
     starttime = 5
@@ -388,16 +397,17 @@ def generate(args):
         auth = []
         name = "4uthority{0}".format(i)
         auth.append(name)
+        guardnames.append(name)
 
         # add to shadow hosts file
         authority = guards_nodes.pop()
-        torargs = "dirauth {0} {1} -f ./authority.torrc --BandwidthRate {2} --BandwidthBurst {3}".format(authority.getBWConsensusArg(), default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
+        torargs = "{0} -f tor.authority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
 
         # generate keys for tor
         os.makedirs(name)
         os.chdir(name)
-        rc, fp = getfp(args.torbin, '../authgen.torrc')
+        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         gencert = "{0} --create-identity-key -m 24 --passphrase-fd 0".format(args.torgencertbin)
         with open("../authgen.pw", 'r') as pwin: retcode = subprocess.call(shlex.split(gencert), stdin=pwin)
@@ -405,54 +415,61 @@ def generate(args):
         with open("authority_certificate", 'r') as f: 
             for line in f:
                 if 'fingerprint' in line: auth.append(line.strip().split()[1]) # v3ident
+        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), authority.getBWConsensusArg(), name),
         auth.append(fp)
         dirauths.append(auth)
         shutil.move("authority_certificate", "keys/.")
         shutil.move("authority_identity_key", "keys/.")
         shutil.move("authority_signing_key", "keys/.")
         os.chdir("..")
-        starttime += 5
+        starttime += 1
         i += 1
-    os.chdir("..")
 
     # tor bridge authority
     bridgeauths = []                    # [name, None, fingerprint]
     if args.nbridgeauths:
-        os.chdir("initdata")
         with open("bridgeauthgen.torrc", 'w') as fauthgen: print >>fauthgen, "DirServer test 127.0.0.1:5000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000\nORPort 5000\n"
         i = 1
         while i <= args.nbridgeauths:
             auth = []
             name = "4uthoritybridge{0}".format(i)
+            guardnames.append(name)
             auth.append(name)
             auth.append(None)
             bridgeauthority = guards_nodes.pop()
-            torargs = "bridgeauth {0} {1} -f ./bridgeauthority.torrc --BandwidthRate {2} --BandwidthBurst {3}".format(bridgeauthority.getBWConsensusArg(), default_tor_args, bridgeauthority.getBWRateArg(), bridgeauthority.getBWBurstArg()) # in bytes
+            torargs = "{0} -f tor.bridgeauthority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, bridgeauthority.getBWRateArg(), bridgeauthority.getBWBurstArg()) # in bytes
             addRelayToXML(root, starttime, torargs, None, None, name, bridgeauthority.download, bridgeauthority.upload, bridgeauthority.ip, bridgeauthority.code)
 
             # generate certificate in order to get the fingerprint
             os.makedirs(name)
             os.chdir(name)
-            rc, fp = getfp(args.torbin, '../bridgeauthgen.torrc')
+            rc, fp = getfp(args.torbin, '../bridgeauthgen.torrc', name)
             os.chdir("..")
             if rc != 0: return rc
+            print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name),
             auth.append(fp)
             bridgeauths.append(auth)
             i += 1
-        os.chdir("..")
 
     # boot relays equally spread out between 1 and 11 minutes
     secondsPerRelay = 600.0 / (len(exitguards_nodes) + len(exits_nodes) + len(guards_nodes) + len(middles_nodes))
     relayStartTime = 60.0 # minute 1
-    
+
     # exitguard relays
     i = 1
     for r in exitguards_nodes:
         assert r.isExit is True
         assert r.isGuard is True
         name = "relayexitguard{0}".format(i)
+        guardnames.append(name)
+        os.makedirs(name)
+        os.chdir(name)
+        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        if rc != 0: return rc
+        os.chdir("..")
+        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
         starttime = "{0}".format(int(round(relayStartTime)))
-        torargs = "exitrelay {0} {1} -f ./exitguard.torrc --BandwidthRate {2} --BandwidthBurst {3}".format(r.getBWConsensusArg(), default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
+        torargs = "{0} -f tor.exitguard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
@@ -463,8 +480,15 @@ def generate(args):
         assert r.isExit is not True
         assert r.isGuard is True
         name = "relayguard{0}".format(i)
+        guardnames.append(name)
+        os.makedirs(name)
+        os.chdir(name)
+        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        if rc != 0: return rc
+        os.chdir("..")
+        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
         starttime = "{0}".format(int(round(relayStartTime)))
-        torargs = "relay {0} {1} -f ./guard.torrc --BandwidthRate {2} --BandwidthBurst {3}".format(r.getBWConsensusArg(), default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
+        torargs = "{0} -f tor.guard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
@@ -475,8 +499,14 @@ def generate(args):
         assert r.isExit is True
         assert r.isGuard is not True
         name = "relayexit{0}".format(i)
+        os.makedirs(name)
+        os.chdir(name)
+        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        if rc != 0: return rc
+        os.chdir("..")
+        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
         starttime = "{0}".format(int(round(relayStartTime)))
-        torargs = "exitrelay {0} {1} -f ./exit.torrc --BandwidthRate {2} --BandwidthBurst {3}".format(r.getBWConsensusArg(), default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
+        torargs = "{0} -f tor.exit.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
@@ -487,11 +517,19 @@ def generate(args):
         assert r.isExit is not True
         assert r.isGuard is not True
         name = "relaymiddle{0}".format(i)
+        os.makedirs(name)
+        os.chdir(name)
+        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        if rc != 0: return rc
+        os.chdir("..")
+        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
         starttime = "{0}".format(int(round(relayStartTime)))
-        torargs = "relay {0} {1} -f ./middle.torrc --BandwidthRate {2} --BandwidthBurst {3}".format(r.getBWConsensusArg(), default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
+        torargs = "{0} -f tor.middle.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
+
+    os.chdir("..") # move out of initdata dir
 
     # clients
     nimclients = int(args.fim * args.nclients)
@@ -511,8 +549,8 @@ def generate(args):
         while i <= args.nclients:
             name = "client{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./client.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./all.dl localhost 9000 ./webthink.dat -1"
+            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.all.dl localhost 9000 filetransfer.webthink.dat -1"
             
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -521,11 +559,22 @@ def generate(args):
         
     else: # user are separated into bulk/web downloaders who always download their file type
         i = 1
+        while i <= 1:
+            name = "torflowauthority"
+            starttime = "{0}".format(int(round(clientStartTime)))
+            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+            
+            addRelayToXML(root, starttime, torargs, None, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
+        
+            clientStartTime += secondsPerClient
+            i += 1
+
+        i = 1
         while i <= nimclients:
             name = "imclient{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./client.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./im.dl localhost 9000 ./imthink.dat -1"
+            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.im.dl localhost 9000 filetransfer.imthink.dat -1"
             
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -536,8 +585,8 @@ def generate(args):
         while i <= nwebclients:
             name = "webclient{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./client.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./web.dl localhost 9000 ./webthink.dat -1"
+            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.web.dl localhost 9000 filetransfer.webthink.dat -1"
             
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -548,8 +597,8 @@ def generate(args):
         while i <= nbulkclients:
             name = "bulkclient{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./client.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./bulk.dl localhost 9000 none -1"
+            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.bulk.dl localhost 9000 none -1"
             
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -560,7 +609,7 @@ def generate(args):
         while i <= np2pclients:
             name = "p2pclient{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./client.torrc".format(10240, default_tor_args) # in bytes
+            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
             torrentargs = "torrent node auth.torrent 5000 localhost 9000 6000 700MB"
  
             addRelayToXML(root, starttime, torargs, None, torrentargs, name, code=choice(clientCountryCodes))
@@ -572,8 +621,8 @@ def generate(args):
         while i <= nperf50kclients:
             name = "perfclient50k{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./torperf.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./50kib.dl localhost 9000 ./perfthink.dat -1"
+            torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.50kib.dl localhost 9000 filetransfer.perfthink.dat -1"
  
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -584,8 +633,8 @@ def generate(args):
         while i <= nperf1mclients:
             name = "perfclient1m{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./torperf.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./1mib.dl localhost 9000 ./perfthink.dat -1"
+            torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.1mib.dl localhost 9000 filetransfer.perfthink.dat -1"
  
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -596,8 +645,8 @@ def generate(args):
         while i <= nperf5mclients:
             name = "perfclient5m{0}".format(i)
             starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "client {0} {1} -f ./torperf.torrc".format(10240, default_tor_args) # in bytes
-            fileargs = "client multi ./5mib.dl localhost 9000 ./perfthink.dat -1"
+            torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
+            fileargs = "client multi filetransfer.5mib.dl localhost 9000 filetransfer.perfthink.dat -1"
  
             addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
         
@@ -606,15 +655,11 @@ def generate(args):
                    
     # generate torrc files now that we know the authorities and bridges
     bridges = None
-    write_torrc_files(args, dirauths, bridgeauths, bridges)
+    write_torrc_files(args, dirauths, bridgeauths, bridges, guardnames)
 
     # finally, print the XML file
     with open("shadow.config.xml", 'wb') as fhosts:
         # plug-ins
-        e = etree.Element("plugin")
-        e.set("id", "scallion")
-        e.set("path", "{0}plugins/libshadow-plugin-scallion.so".format(INSTALLPREFIX))
-        root.insert(0, e)
         
         e = etree.Element("plugin")
         e.set("id", "filetransfer")
@@ -626,6 +671,21 @@ def generate(args):
             e.set("id", "torrent")
             e.set("path", "{0}plugins/libshadow-plugin-torrent.so".format(INSTALLPREFIX))
             root.insert(0, e)
+
+        e = etree.Element("plugin")
+        e.set("id", "torflow")
+        e.set("path", "{0}plugins/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
+        root.insert(0, e)
+
+        e = etree.Element("plugin")
+        e.set("id", "torctl")
+        e.set("path", "{0}plugins/libshadow-plugin-torctl.so".format(INSTALLPREFIX))
+        root.insert(0, e)
+
+        e = etree.Element("plugin")
+        e.set("id", "tor")
+        e.set("path", "{0}plugins/libshadow-plugin-tor.so".format(INSTALLPREFIX))
+        root.insert(0, e)
         
         # internet topology map
         e = etree.Element("topology")
@@ -640,7 +700,7 @@ def generate(args):
         # all our hosts
         print >>fhosts, (etree.tostring(root, pretty_print=True, xml_declaration=False))
 
-def addRelayToXML(root, starttime, torargs, fileargs, torrentargs, name, download=0, upload=0, ip=None, code=None): # bandwidth in KiB
+def addRelayToXML(root, starttime, torargs, fileargs, torrentargs, name, download=0, upload=0, ip=None, code=None, torflowworkers=1): # bandwidth in KiB
     # node
     e = etree.SubElement(root, "node")
     e.set("id", name)
@@ -660,9 +720,22 @@ def addRelayToXML(root, starttime, torargs, fileargs, torrentargs, name, downloa
     # applications - wait 5 minutes to start applications
     if torargs is not None:
         a = etree.SubElement(e, "application")
-        a.set("plugin", "scallion")
+        a.set("plugin", "tor")
         a.set("starttime", "{0}".format(int(starttime)))
         a.set("arguments", torargs)
+        a = etree.SubElement(e, "application")
+        a.set("plugin", "torctl")
+        a.set("starttime", "{0}".format(int(starttime)+1))
+        a.set("arguments", "localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY")
+        if "torflowauthority" in name:
+            a = etree.SubElement(e, "application")
+            a.set("plugin", "filetransfer")
+            a.set("starttime", "{0}".format(int(starttime)))
+            a.set("arguments", "server 443 ~/.shadow/share/")
+            a = etree.SubElement(e, "application")
+            a.set("plugin", "torflow")
+            a.set("starttime", "{0}".format(int(starttime)+60))
+            a.set("arguments", "data/torflowauthority/v3bw 60 {0} 50 0.5 9051:9000 torflowauthority:443".format(torflowworkers))
     if fileargs is not None:
         a = etree.SubElement(e, "application")
         a.set("plugin", "filetransfer")
@@ -954,7 +1027,7 @@ def parse_consensus(consensus_path):
     
     return validyear, validmonth, sorted(relays, key=lambda relay: relay.getBWConsensusArg())
 
-def write_torrc_files(args, dirauths, bridgeauths, bridges):
+def write_torrc_files(args, dirauths, bridgeauths, bridges, guardnames):
     auths_lines = ""
     # If we're running a bridge authority too, use
     # 'AlternateDirAuthority' together with 'AlternateBridgeAuthority'
@@ -975,6 +1048,8 @@ def write_torrc_files(args, dirauths, bridgeauths, bridges):
 '{0}\
 TestingTorNetwork 1\n\
 AllowInvalidNodes "entry,middle,exit,introduction,rendezvous"\n\
+ServerDNSResolvConfFile shadowresolv.conf\n\
+ServerDNSAllowBrokenConfig 1\n\
 ServerDNSDetectHijacking 0\n\
 NumCPUs 1\n\
 SafeLogging 0\n\
@@ -986,7 +1061,9 @@ CellStatistics 1\n\
 DirReqStatistics 1\n\
 EntryStatistics 1\n\
 ExitPortStatistics 1\n\
-ExtraInfoStatistics 1\n'.format(auths_lines)
+ExtraInfoStatistics 1\n\
+CircuitPriorityHalflife 30\n\
+ControlPort 9051\n'.format(auths_lines)
     clients = \
 'ORPort 0\n\
 DirPort 0\n\
@@ -1002,12 +1079,13 @@ SocksPort 0\n' # note - also need exit policy
     bridges = \
 'BridgeRelay 1\n'
     authorities = \
-'V3AuthoritativeDirectory 1\n\
-V2AuthoritativeDirectory 1\n\
-AuthoritativeDirectory 1\n\
+'AuthoritativeDirectory 1\n\
+V3AuthoritativeDirectory 1\n\
 ORPort 9111\n\
 DirPort 9112\n\
-SocksPort 0\n' # note - also need exit policy
+SocksPort 0\n\
+V3BandwidthsFile data/torflowauthority/v3bw\n\
+TestingDirAuthVoteGuard {0}\n'.format(",".join(guardnames)) # note - also need exit policy
     bridgeauths = \
 'AuthoritativeDirectory 1\n\
 BridgeAuthoritativeDir 1\n\
@@ -1020,19 +1098,21 @@ SocksPort 0\n' # note - also need exit policy
     epaccept = 'ExitPolicy "accept *:*"\n'
     maxdirty = 'MaxCircuitDirtiness 10 seconds\n'
     noguards = 'UseEntryGuards 0\n'
-    with open("authority.torrc", 'wb') as f: print >>f, common + authorities + epreject
+
+    with open("tor.common.torrc", 'wb') as f: print >>f, common
+    with open("tor.authority.torrc", 'wb') as f: print >>f, authorities + epreject
     if args.nbridgeauths > 0:
-        with open("bridgeauthority.torrc", 'wb') as f: print >>f, common + bridgeauths + epreject
-    with open("exitguard.torrc", 'wb') as f: print >>f, common + relays + dirserv + epaccept
-    with open("guard.torrc", 'wb') as f: print >>f, common + relays + dirserv + epreject
-    with open("exit.torrc", 'wb') as f: print >>f, common + relays + dirserv + epaccept
-    with open("middle.torrc", 'wb') as f: print >>f, common + relays + dirserv + epreject
+        with open("tor.bridgeauthority.torrc", 'wb') as f: print >>f, bridgeauths + epreject
+    with open("tor.exitguard.torrc", 'wb') as f: print >>f, relays + dirserv + epaccept
+    with open("tor.guard.torrc", 'wb') as f: print >>f, relays + dirserv + epreject
+    with open("tor.exit.torrc", 'wb') as f: print >>f, relays + dirserv + epaccept
+    with open("tor.middle.torrc", 'wb') as f: print >>f, relays + dirserv + epreject
     if args.nbridges > 0:
-        with open("bridge.torrc", 'wb') as f: print >>f, common + relays + epreject
-    with open("client.torrc", 'wb') as f: print >>f, common + clients
+        with open("tor.bridge.torrc", 'wb') as f: print >>f, relays + epreject
+    with open("tor.client.torrc", 'wb') as f: print >>f, clients
     if args.nbridgeclients > 0:
-        with open("bridgeclient.torrc", 'wb') as f: print >>f, common + clients + bridgeclients
-    with open("torperf.torrc", 'wb') as f: print >>f, common + clients + maxdirty + noguards
+        with open("tor.bridgeclient.torrc", 'wb') as f: print >>f, clients + bridgeclients
+    with open("tor.torperf.torrc", 'wb') as f: print >>f, clients + maxdirty + noguards
     log("finished generating torrc files")
 
 ## helper - test if program is in path

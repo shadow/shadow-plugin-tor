@@ -41,40 +41,12 @@ static in_addr_t _scallion_HostnameCallback(const gchar* hostname) {
 static void _scallion_new(gint argc, gchar* argv[]) {
 	scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "scallion_new called");
 
-	gchar* usage = "Scallion USAGE: (\"dirauth\"|\"bridgeauth\"|\"relay\"|\"exitrelay\"|\"bridge\"|\"client\"|\"bridgeclient\") consensusWeightKiB ...\n";
-
-	if(argc < 3) {
-		scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, usage);
+	gchar* usage = "USAGE: (\"please provide a torrc file or configs in the same format as tor command line options\n";
+	if(argc == 1) {
+		scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, usage);
 		return;
 	}
 	
-	/* parse our arguments, program name is argv[0] */
-	gchar* type = argv[1];
-	gint weight = atoi(argv[2]);
-
-	enum vtor_nodetype ntype;
-
-	if(g_ascii_strncasecmp(type, "dirauth", strlen("dirauth")) == 0) {
-		ntype = VTOR_DIRAUTH;
-	} else if(g_ascii_strncasecmp(type, "hsauth", strlen("hsauth")) == 0) {
-		ntype = VTOR_HSAUTH;
-	} else if(g_ascii_strncasecmp(type, "bridgeauth", strlen("bridgeauth")) == 0) {
-		ntype = VTOR_BRIDGEAUTH;
-	} else if(g_ascii_strncasecmp(type, "relay", strlen("relay")) == 0) {
-		ntype = VTOR_RELAY;
-	} else if(g_ascii_strncasecmp(type, "exitrelay", strlen("exitrelay")) == 0) {
-		ntype = VTOR_EXITRELAY;
-	} else if(g_ascii_strncasecmp(type, "bridge", strlen("bridge")) == 0) {
-		ntype = VTOR_BRIDGE;
-	} else if(g_ascii_strncasecmp(type, "client", strlen("client")) == 0) {
-		ntype = VTOR_CLIENT;
-	} else if(g_ascii_strncasecmp(type, "bridgeclient", strlen("bridgeclient")) == 0) {
-		ntype = VTOR_BRIDGECLIENT;
-	} else {
-		scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "Unrecognized relay type: %s", usage);
-		return;
-	}
-
 	/* get the hostname, IP, and IP string */
 	if(gethostname(scallion.hostname, 128) < 0) {
 		scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "error getting hostname");
@@ -83,7 +55,8 @@ static void _scallion_new(gint argc, gchar* argv[]) {
 	scallion.ip = _scallion_HostnameCallback(scallion.hostname);
 	inet_ntop(AF_INET, &scallion.ip, scallion.ipstring, sizeof(scallion.ipstring));
 
-	scallion.stor = scalliontor_new(scallion.shadowlibFuncs, scallion.hostname, ntype, weight, argc-3, &argv[3]);
+	/* pass arguments to tor, program name is argv[0] */
+	scallion.stor = scalliontor_new(scallion.shadowlibFuncs, scallion.hostname, argc-1, &argv[1]);
 }
 
 static void _scallion_free() {
