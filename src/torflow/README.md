@@ -7,7 +7,7 @@ usage
 -----
 
 Torflow arguments should be configured as follows:
-	arguments="filename pausetime workers sliceSize nodeCap socksPort:ctlPort server:port"
+	arguments="filename pausetime workers sliceSize nodeCap socksPort:ctlPort:socksPort:ctlPort:... server:port,server:port,..."
 
 The arguments are listed below, along with the value used by real TorFlow if
 applicable, and an explanation.
@@ -28,11 +28,13 @@ have in the final measurement. Any relay that has a measured bandwidth than
 (nodeCap * sum of measured bandwidths) has its measurement clipped to that
 value.
 
- + socksPort (9000): The port used to connect to the Tor instance.
+ + socksPort: The port used to connect to the Tor instance.
 
- + ctlPort: The TorControl port, set in the arguments to the tor plugin.
+ + ctlPort: The TorControl port, set in the arguments to the tor plugin. Use
+multiple socksPort:ctlPort pairs, joined by colons, one for each worker.
 
  + server: The name of the test fileserver which TorFlow builds circuits to connect to.
 
- + port: The port to connect to on the test fileserver.
+ + port: The port to connect to on the test fileserver. Use multiple
+server:port pairs, joined by commas, one for each worker.
 

@@ -63,8 +63,6 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	slicesize = atoi(argv[4]);
 	nodeCap = atof(argv[5]);
 
-	TorFlowFileServer* probeFileServer = g_queue_pop_head(fileservers);
-
 	TorFlowManager* tfm = g_new0(TorFlowManager, 1);
 	tfm->ed = mainEpollDescriptor;
 	tfm->slogf = slogf;
@@ -101,6 +99,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	tfm->tfps = g_new0(TorFlowProber*, tfm->workers);
 	tfm->tfpeds = g_new0(int, tfm->workers);
 	for(i = 0; i < tfm->workers; i++) {
+		TorFlowFileServer* probeFileServer = g_queue_pop_head(fileservers);
 		tfm->tfps[i] = torflowprober_new(slogf, scbf, tfm->tfa,
 				i, tfm->workers,
 				pausetime, slicesize,
