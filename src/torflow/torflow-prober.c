@@ -97,12 +97,12 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 
 	// If we're done with this slice, see if we're done with all slices
 	while (doneSlice) {
+		// Report stats to aggregator and to log file
+		torflowaggregator_reportMeasurements(tfp->_tf.tfa, tfp->internal->relays, tfp->internal->sliceSize, tfp->internal->currSlice);
 		torflowbase_reportMeasurements((TorFlowBase*) tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
+
 		tfp->internal->currSlice++;
 		if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
-			// Report stats to aggregator
-			torflowaggregator_reportMeasurements(tfp->_tf.tfa, tfp->internal->relays, tfp->internal->workerID);
-
 			// Prepare for next measurement and schedule it for the future
 			//g_slist_foreach(tfp->internal->relays, (GFunc)torflowutil_resetRelay, NULL);
 			tfp->internal->relays = NULL;
@@ -125,6 +125,9 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 
 	tfp->internal->relays = relayList;
 	tfp->internal->numRelays = g_slist_length(relayList);
+
+	// Prepare the aggregator to with initial values
+	torflowaggregator_reportInitial(tfp->_tf.tfa, tfp->internal->relays);
 
 	// Calculate the first slice this worker can work on
 	gint numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
