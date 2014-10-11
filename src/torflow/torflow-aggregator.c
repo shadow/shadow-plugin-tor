@@ -8,7 +8,7 @@ struct _TorFlowAggregator {
 	ShadowLogFunc slogf;
 	gint numWorkers;
 	gboolean gotInitial;
-	GString* filename;
+	GString* filepath;
 	GHashTable* relayStats;
 	gdouble nodeCap;
 	gint version;
@@ -65,17 +65,27 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 	}
 
 	//create new file to print to, and increment version
-	GString* newFilename = g_string_new(tfa->filename->str);
+	GString* newFilename = g_string_new(tfa->filepath->str);
 	g_string_append_printf(newFilename, ".%d", tfa->version++);
+
 	struct timespec now_ts;
 	clock_gettime(CLOCK_REALTIME, &now_ts);
+
 	FILE * fp;
 	fp = fopen(newFilename->str, "w");
-	fprintf(fp, "%li\n", now_ts.tv_sec);
-
-
+	fprintf(fp, "%li", now_ts.tv_sec);
 
 	//loop through nodes and cap bandwidths that are too large, then print to file
+	/*
+	 * format is, where first line value is unix timestamp:
+	 * ```
+	 * {}\n
+	 * node_id=${}\tbw={}\tnick={}\n
+	 * [...]
+	 * node_id=${}\tbw={}\tnick={}
+	 * ```
+	 * notice there is no newline on the last line.
+	 */
 	g_hash_table_iter_init(&iter, tfa->relayStats);
 	while(g_hash_table_iter_next(&iter, &key, &value)) {
 		TorFlowRelayStats* current = (TorFlowRelayStats*)value;
@@ -86,21 +96,33 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 			current->newBandwidth = (gint)(totalBW * tfa->nodeCap);
 		}
 
-		fprintf(fp, "node_id=$%s bw=%i nick=%s\n",
+		fprintf(fp, "\nnode_id=$%s\tbw=%i\tnick=%s",
 				current->identity->str,
 				current->newBandwidth,
 				current->nickname->str);
 	}
+
 	fclose(fp);
-	if(!unlink(tfa->filename->str)) {
+
+	/* update symlink */
+	if(!unlink(tfa->filepath->str)) {
 		tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
 				"Unable to remove symlink to %s!\n",
-				tfa->filename->str);
+				tfa->filepath->str);
 	}
-	if(!symlink(newFilename->str, tfa->filename->str)) {
+
+	gchar* linkRef = NULL;
+	gchar* filenameNoDirs = g_strrstr(newFilename->str, "/");
+	if(filenameNoDirs) {
+	    linkRef = filenameNoDirs+1;
+	} else {
+	    linkRef = newFilename->str;
+	}
+
+	if(!symlink(linkRef, tfa->filepath->str)) {
 		tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
 				"Unable to create symlink from %s to %s!\n",
-				newFilename->str, tfa->filename->str);
+				newFilename->str, tfa->filepath->str);
 	}
 	g_string_free(newFilename, TRUE);
 }
@@ -160,7 +182,7 @@ void torflowaggregator_free(TorFlowAggregator* tfa) {
 
 	g_hash_table_destroy(tfa->relayStats);
 
-	g_string_free(tfa->filename, TRUE);
+	g_string_free(tfa->filepath, TRUE);
 	g_free(tfa);
 }
 
@@ -171,7 +193,7 @@ TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf,
 	tfa = g_new0(TorFlowAggregator, 1);
 	tfa->slogf = slogf;
 	tfa->numWorkers = numWorkers;
-	tfa->filename = g_string_new(filename);
+	tfa->filepath = g_string_new(filename);
 	tfa->nodeCap = nodeCap;
 	tfa->version = 0;
 	tfa->relayStats = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, _torflowaggregator_torFlowRelayStatsFree);
