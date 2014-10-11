@@ -5,7 +5,6 @@
 #include "torflow.h"
 
 struct _TorFlowProberInternal {
-	TorFlowSybil* sybil;
 	GSList* relays;
 	gint workerID;
 	gint numWorkers;
@@ -15,6 +14,11 @@ struct _TorFlowProberInternal {
 	gint numRelays;
 	gint minSlice;
 	gint maxSlice;
+    gint measurementCircID;
+    gint measurementStreamID;
+    gboolean measurementStreamSucceeded;
+    gint downloadSD;
+    TorFlowFileServer* fileserver;
 };
 
 static void _torflowprober_downloadFile(TorFlowProber* tfp) {
@@ -56,7 +60,7 @@ static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 		fname = "/32KiB.urnd";
 	}
 #endif
-	torflow_startDownload((TorFlow*)tfp, tfp->internal->sybil->downloadSD, fname);
+	torflow_startDownload((TorFlow*)tfp, tfp->internal->downloadSD, fname);
 }
 
 static void _torflowprober_onBootstrapComplete(TorFlowProber* tfp) {
@@ -71,9 +75,9 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 	g_assert(tfp);
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"Probe Complete, Building Next Circuit");
-	torflowbase_closeCircuit((TorFlowBase*)tfp, tfp->internal->sybil->measurementCircID);
-	tfp->internal->sybil->measurementCircID = 0;
-	tfp->internal->sybil->measurementStreamID = 0;
+	torflowbase_closeCircuit((TorFlowBase*)tfp, tfp->internal->measurementCircID);
+	tfp->internal->measurementCircID = 0;
+	tfp->internal->measurementStreamID = 0;
 
 	// See if we are done with this slice
 	GSList* currentNode = g_slist_nth(tfp->internal->relays,
@@ -155,18 +159,18 @@ static void _torflowprober_onMeasurementCircuitBuilt(TorFlowProber* tfp, gint ci
 	g_assert(tfp);
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"Circuit Built, Starting Download");
-	tfp->internal->sybil->measurementCircID = circid;
-	tfp->internal->sybil->downloadSD = torflow_newDownload((TorFlow*)tfp, tfp->internal->sybil->fileserver);
+	tfp->internal->measurementCircID = circid;
+	tfp->internal->downloadSD = torflow_newDownload((TorFlow*)tfp, tfp->internal->fileserver);
 }
 
 static void _torflowprober_onStreamNew(TorFlowProber* tfp, gint streamid, gint circid, gchar* targetAddress, gint targetPort) {
 	g_assert(tfp);
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"New Stream, Attaching to Circuit");
-	if(tfp->internal->sybil->measurementCircID) {
+	if(tfp->internal->measurementCircID) {
 		/* attach to our measurement circuit */
-		tfp->internal->sybil->measurementStreamID = streamid;
-		torflowbase_attachStreamToCircuit((TorFlowBase*)tfp, tfp->internal->sybil->measurementStreamID, tfp->internal->sybil->measurementCircID);
+		tfp->internal->measurementStreamID = streamid;
+		torflowbase_attachStreamToCircuit((TorFlowBase*)tfp, tfp->internal->measurementStreamID, tfp->internal->measurementCircID);
 	} else {
 		/* let tor choose a circuit */
 		torflowbase_attachStreamToCircuit((TorFlowBase*)tfp, streamid, 0);
@@ -178,9 +182,9 @@ static void _torflowprober_onStreamSucceeded(TorFlowProber* tfp, gint streamid, 
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"Stream Attach Succeeded");
 
-	if(circid == tfp->internal->sybil->measurementCircID &&
-			streamid == tfp->internal->sybil->measurementStreamID) {
-		tfp->internal->sybil->measurementStreamSucceeded = TRUE;
+	if(circid == tfp->internal->measurementCircID &&
+			streamid == tfp->internal->measurementStreamID) {
+		tfp->internal->measurementStreamSucceeded = TRUE;
 	}
 }
 
@@ -189,8 +193,8 @@ static void _torflowprober_onFileServerConnected(TorFlowProber* tfp, gint socksd
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"FileServer Connected");
 
-	g_assert(tfp->internal->sybil->measurementStreamSucceeded);
-	if(socksd == tfp->internal->sybil->downloadSD) {
+	g_assert(tfp->internal->measurementStreamSucceeded);
+	if(socksd == tfp->internal->downloadSD) {
 		_torflowprober_downloadFile(tfp);
 	}
 }
@@ -211,7 +215,8 @@ static void _torflowprober_onFileDownloadComplete(TorFlowProber* tfp, gint conte
 	g_assert(tfp);
 
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-			"probe-ping %i bytes rtt=%zu payload=%zu total=%zu",
+			"probe-complete path=%s bytes=%i time-to: rtt=%zu payload=%zu total=%zu",
+			torflowbase_getCurrentPath((TorFlowBase*) tfp),
 			contentLength, roundTripTime, payloadTime, totalTime);
 
 	torflowbase_recordMeasurement((TorFlowBase*) tfp, contentLength, roundTripTime, payloadTime, totalTime);
@@ -225,11 +230,10 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 
 	torflowbase_reportMeasurements((TorFlowBase*) tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
 
-	if(tfp->internal->sybil->fileserver) {
-	    torflowfileserver_unref(tfp->internal->sybil->fileserver);
+	if(tfp->internal->fileserver) {
+	    torflowfileserver_unref(tfp->internal->fileserver);
 	}
 
-	g_free(tfp->internal->sybil);
 	g_free(tfp->internal);
 }
 
@@ -257,14 +261,13 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	tfp->internal->pausetime = pausetime;
 	tfp->internal->sliceSize = sliceSize;
 	tfp->internal->currSlice = 0;
-	tfp->internal->sybil = g_new0(TorFlowSybil, 1);
 
 	if(fileserver) {
         torflowfileserver_ref(fileserver);
-        tfp->internal->sybil->fileserver = fileserver;
+        tfp->internal->fileserver = fileserver;
 	}
 
-	torflow_init((TorFlow*)tfp, &events, slogf, scbf, tfa, controlPort, socksPort);
+	torflow_init((TorFlow*)tfp, &events, slogf, scbf, tfa, controlPort, socksPort, workerID);
 
 	return tfp;
 }

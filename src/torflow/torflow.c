@@ -388,7 +388,7 @@ static void _torflow_onFree(TorFlow* tf) {
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort) {
+		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort, gint workerID) {
 	g_assert(tf);
 	g_assert(eventHandlers);
 
@@ -413,7 +413,7 @@ void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 	/* intercept onFree so we can properly free our data */
 	events.onFree = (FreeFunc) _torflow_onFree;
 
-	torflowbase_init((TorFlowBase*)tf, &events, slogf, scbf, controlPort, tf->internal->epolld);
+	torflowbase_init((TorFlowBase*)tf, &events, slogf, scbf, controlPort, tf->internal->epolld, workerID);
 
 	torflowbase_start((TorFlowBase*) tf);
 }

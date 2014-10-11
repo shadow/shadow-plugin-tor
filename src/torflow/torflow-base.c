@@ -11,7 +11,7 @@ typedef enum {
 struct _TorFlowBaseInternal {
 	TorFlowEventCallbacks eventHandlers;
 
-	/* epoll socket to watch our conrol socket */
+	/* epoll socket to watch our control socket */
 	gint epolld;
 
 	/* controlling the tor client */
@@ -130,9 +130,6 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 						"finished building new measurement circuit '%i'", circid);
 
 				tfb->internal->waitingMeasurementCircuit = FALSE;
-				g_free(tfb->internal->cachedCircPath);
-				tfb->internal->cachedCircPath = NULL;
-				tfb->internal->cachedCircId = 0;
 
 				if(tfb->internal->eventHandlers.onMeasurementCircuitBuilt) {
 					tfb->internal->eventHandlers.onMeasurementCircuitBuilt(tfb, circid);
@@ -504,13 +501,13 @@ void torflowbase_start(TorFlowBase* tfb) {
 }
 
 void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld) {
+		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld, gint workerID) {
 	g_assert(tfb);
 	g_assert(eventHandlers);
 	g_assert(slogf && scbf);
 
 	GString* idbuf = g_string_new(NULL);
-	g_string_printf(idbuf, "TORFLOW-%u", ntohs(controlPort));
+	g_string_printf(idbuf, "TORFLOW-%u-%i", ntohs(controlPort), workerID);
 	tfb->id = g_string_free(idbuf, FALSE);
 	tfb->slogf = slogf;
 	tfb->scbf = scbf;
@@ -564,6 +561,11 @@ void torflowbase_free(TorFlowBase* tfb) {
 gint torflowbase_getControlSD(TorFlowBase* tfb) {
 	g_assert(tfb);
 	return tfb->internal->controld;
+}
+
+const gchar* torflowbase_getCurrentPath(TorFlowBase* tfb) {
+    g_assert(tfb);
+    return tfb->internal->cachedCircPath;
 }
 
 void torflowbase_requestInfo(TorFlowBase* tfb) {
@@ -669,6 +671,11 @@ gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gint sliceSize
 	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
 
 	tfb->internal->waitingMeasurementCircuit = TRUE;
+
+	if(tfb->internal->cachedCircPath) {
+        g_free(tfb->internal->cachedCircPath);
+        tfb->internal->cachedCircId = 0;
+    }
 	tfb->internal->cachedCircPath = path;
 
 	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a EXTENDCIRCUIT command for %s", path);

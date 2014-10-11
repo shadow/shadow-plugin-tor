@@ -225,6 +225,11 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measur
 			tfrs->meanBandwidth = torflowutil_meanBandwidth(current);
 			tfrs->filteredBandwidth = torflowutil_filteredBandwidth(current, tfrs->meanBandwidth);
 			g_hash_table_replace(tfa->relayStats, tfrs->identity->str, tfrs);
+
+			tfa->slogf(SHADOW_LOG_LEVEL_INFO, __FUNCTION__,
+                "stored new measurements for %s (%s) desc=%i adv=%i mean=%i filtered=%i",
+                tfrs->nickname->str, tfrs->identity->str, tfrs->descriptorBandwidth,
+                tfrs->advertisedBandwidth, tfrs->meanBandwidth, tfrs->filteredBandwidth);
 		}
 		currentNode = g_slist_next(currentNode);
 		i++;

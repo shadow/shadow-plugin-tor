@@ -26,14 +26,6 @@
 
 typedef struct _TorFlowFileServer TorFlowFileServer;
 
-typedef struct _TorFlowSybil {
-	gint measurementCircID;
-	gint measurementStreamID;
-	gboolean measurementStreamSucceeded;
-	gint downloadSD;
-	TorFlowFileServer* fileserver;
-} TorFlowSybil;
-
 typedef struct _TorFlowRelay {
 	GString * nickname;
 	GString * identity;
@@ -82,13 +74,14 @@ struct _TorFlowBase {
 };
 
 void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld);
+		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld, gint workerID);
 void torflowbase_free(TorFlowBase* tfb);
 void torflowbase_start(TorFlowBase* tfb);
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events);
 void torflowbase_requestInfo(TorFlowBase* tfb);
 void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currSlice);
 gint torflowbase_getControlSD(TorFlowBase* tfb);
+const gchar* torflowbase_getCurrentPath(TorFlowBase* tfb);
 gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gint sliceSize, gint currSlice);
 void torflowbase_closeCircuit(TorFlowBase* tfb, gint circid);
 void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint circid);
@@ -116,7 +109,7 @@ struct _TorFlow {
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort);
+		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort, gint workerID);
 gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver);
 void torflow_freeDownload(TorFlow* tf, gint socksd);
 void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath);
