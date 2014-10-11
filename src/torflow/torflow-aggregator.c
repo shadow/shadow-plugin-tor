@@ -33,6 +33,81 @@ static void _torflowaggregator_torFlowRelayStatsFree(gpointer toFree) {
 	g_free(tfrs);
 }
 
+static void _torflowaggregator_updateAuthoritativeLink(TorFlowAggregator* tfa, const gchar* newPath){
+    const gchar* configuredPath = tfa->filepath->str;
+
+    /* sanity check for directory */
+    if(g_file_test(configuredPath, G_FILE_TEST_IS_DIR)) {
+        tfa->slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
+            "configured path '%s' for v3bw file must not be a directory", configuredPath);
+        return;
+    }
+
+    /* first lets make sure the path we want to write is clear */
+    gint result = 0;
+    if(g_file_test(configuredPath, G_FILE_TEST_IS_SYMLINK)) {
+        /* it is a symlink, so its safe to remove */
+        result = g_unlink(configuredPath);
+        if(result < 0) {
+            tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                    "g_unlink() returned %i error %i: %s",
+                    result, errno, g_strerror(errno));
+        }
+    } else if(g_file_test(configuredPath, G_FILE_TEST_IS_REGULAR)) {
+        /* not a symlink, but a regular file. dont overwrite it */
+        GString* backupFilepathBuffer = g_string_new(configuredPath);
+        g_string_append_printf(backupFilepathBuffer, ".init");
+
+        result = g_rename(configuredPath, backupFilepathBuffer->str);
+        if(result < 0) {
+            tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                    "g_rename() returned %i error %i: %s",
+                    result, errno, g_strerror(errno));
+        } else {
+            /* the file better not exist anymore */
+            g_assert(!g_file_test(configuredPath, G_FILE_TEST_IS_REGULAR));
+        }
+
+        g_string_free(backupFilepathBuffer, TRUE);
+    } else {
+        /* its not a symlink, and not a file. so we are creating the first one */
+    }
+
+    if(result < 0) {
+        return;
+    }
+
+    /* the target path for the link is now clear, now we need to set up
+     * the reference (where the link is going to point).
+     * the linkref should point in the same directory as the link itself.
+     */
+    const gchar* linkRef = NULL;
+    /* get the base filename without directory components */
+    gchar* baseFilename = g_strrstr(newPath, "/");
+    if(baseFilename) {
+        /* chop off the directories */
+        linkRef = baseFilename+1;
+    } else {
+        /* newPath had no directories */
+        linkRef = newPath;
+    }
+
+    /* now make the configured path exist, pointing to the new file */
+    result = symlink(linkRef, configuredPath);
+    if(result < 0) {
+        tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                "Unable to create symlink at %s pointing to %s; symlink() returned %i error %i: %s",
+                configuredPath, linkRef, result, errno, g_strerror(errno));
+    } else {
+        /* that better not be a dangling link */
+        g_assert(g_file_test(configuredPath, G_FILE_TEST_IS_SYMLINK) &&
+                g_file_test(configuredPath, G_FILE_TEST_IS_REGULAR));
+
+        tfa->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
+                "new v3bw file '%s' now linked at '%s'", linkRef, configuredPath);
+    }
+}
+
 static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 
 	// loop through measured nodes and aggregate stats
@@ -105,25 +180,7 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 	fclose(fp);
 
 	/* update symlink */
-	if(!unlink(tfa->filepath->str)) {
-		tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-				"Unable to remove symlink to %s!\n",
-				tfa->filepath->str);
-	}
-
-	gchar* linkRef = NULL;
-	gchar* filenameNoDirs = g_strrstr(newFilename->str, "/");
-	if(filenameNoDirs) {
-	    linkRef = filenameNoDirs+1;
-	} else {
-	    linkRef = newFilename->str;
-	}
-
-	if(!symlink(linkRef, tfa->filepath->str)) {
-		tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-				"Unable to create symlink from %s to %s!\n",
-				newFilename->str, tfa->filepath->str);
-	}
+	_torflowaggregator_updateAuthoritativeLink(tfa, newFilename->str);
 	g_string_free(newFilename, TRUE);
 }
 

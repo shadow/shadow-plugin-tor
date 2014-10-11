@@ -21,6 +21,7 @@
 #include <math.h>
 
 #include <glib.h>
+#include <glib/gstdio.h>
 #include <shd-library.h>
 
 typedef struct _TorFlowFileServer TorFlowFileServer;
