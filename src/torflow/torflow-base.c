@@ -154,8 +154,21 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 		GString* targetAddress = g_string_new(targetParts[0]);
 		gint targetPort = atoi(targetParts[1]);
 
+		GString* sourceAddress = NULL;
+		gint sourcePort = 0;
+        for(gint i = 6; parts[i]; i++) {
+            if(!g_ascii_strncasecmp(parts[i], "SOURCE_ADDR=", 12)) {
+                gchar** sourceParts = g_strsplit(&parts[i][12], ":", 0);
+                g_assert(sourceParts[0] && sourceParts[1]);
+                sourceAddress = g_string_new(sourceParts[0]);
+                sourcePort = atoi(sourceParts[1]);
+                g_strfreev(sourceParts);
+            }
+		}
+
 		if(g_strstr_len(parts[3], 3, "NEW") && tfb->internal->eventHandlers.onStreamNew) {
-			tfb->internal->eventHandlers.onStreamNew(tfb, streamid, circid, targetAddress->str, targetPort);
+			tfb->internal->eventHandlers.onStreamNew(tfb, streamid, circid,
+			        targetAddress->str, targetPort, sourceAddress->str, sourcePort);
 			isConsumed = TRUE;
 		} else if(g_strstr_len(parts[3], 9, "SUCCEEDED") && tfb->internal->eventHandlers.onStreamSucceeded) {
 			tfb->internal->eventHandlers.onStreamSucceeded(tfb, streamid, circid, targetAddress->str, targetPort);
@@ -163,6 +176,9 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 		} else if(g_strstr_len(parts[3], 6, "CLOSED")) {
 		}
 
+		if(sourceAddress) {
+		    g_string_free(sourceAddress, TRUE);
+		}
 		g_string_free(targetAddress, TRUE);
 		g_strfreev(targetParts);
 		g_strfreev(parts);

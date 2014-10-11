@@ -40,8 +40,10 @@ struct _TorFlowInternal {
 	/* a copy of the epolld from torflowbase */
 	gint epolld;
 
-	/* downloading through tor client */
+	/* the socks port that the tor client is listening on, in network order */
 	in_port_t netSocksPort;
+	/* the port our side of the socks connection assigned to us, in host order */
+	in_port_t hostBoundSocksPort;
 	GHashTable* downloads;
 };
 
@@ -70,6 +72,14 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver) {
 		tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
 				"unable to start client socksd: error in connect");
 		return -1;
+	}
+
+	struct sockaddr socksName;
+	memset(&socksName, 0, sizeof(struct sockaddr));
+	socklen_t socksNameLen = (socklen_t)sizeof(struct sockaddr);
+	res = getsockname(socksd, &socksName, &socksNameLen);
+	if(res == 0) {
+	    tf->internal->hostBoundSocksPort = ntohs(((struct sockaddr_in*)&socksName)->sin_port);
 	}
 
 	/* specify the events to watch for on this socket.
@@ -421,6 +431,11 @@ void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 gint torflow_getEpollDescriptor(TorFlow* tf) {
 	g_assert(tf);
 	return tf->internal->epolld;
+}
+
+in_port_t torflow_getHostBoundSocksPort(TorFlow* tf) {
+    g_assert(tf);
+    return tf->internal->hostBoundSocksPort;
 }
 
 void torflow_ready(TorFlow* tf) {

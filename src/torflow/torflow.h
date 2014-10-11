@@ -46,7 +46,8 @@ typedef void (*ReadyFunc)(gpointer data);
 typedef void (*BootstrapCompleteFunc)(gpointer data);
 typedef void (*DescriptorsReceivedFunc)(gpointer data1, gpointer data2);
 typedef void (*MeasurementCircuitBuiltFunc)(gpointer data, gint circid);
-typedef void (*StreamNewFunc)(gpointer data, gint streamid, gint circid, gchar* targetAddress, gint targetPort);
+typedef void (*StreamNewFunc)(gpointer data, gint streamid, gint circid,
+        gchar* targetAddress, gint targetPort, gchar* sourceAddress, gint sourcePort);
 typedef void (*StreamSucceededFunc)(gpointer data, gint streamid, gint circid, gchar* targetAddress, gint targetPort);
 typedef void (*FileServerConnectedFunc)(gpointer data, gint socksd);
 typedef void (*FileServerTimeoutFunc)(gpointer data);
@@ -114,6 +115,7 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver);
 void torflow_freeDownload(TorFlow* tf, gint socksd);
 void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath);
 gint torflow_getEpollDescriptor(TorFlow* tf);
+in_port_t torflow_getHostBoundSocksPort(TorFlow* tf);
 void torflow_ready(TorFlow* tf);
 
 typedef struct _TorFlowProber TorFlowProber;

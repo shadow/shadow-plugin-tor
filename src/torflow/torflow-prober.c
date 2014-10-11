@@ -163,8 +163,18 @@ static void _torflowprober_onMeasurementCircuitBuilt(TorFlowProber* tfp, gint ci
 	tfp->internal->downloadSD = torflow_newDownload((TorFlow*)tfp, tfp->internal->fileserver);
 }
 
-static void _torflowprober_onStreamNew(TorFlowProber* tfp, gint streamid, gint circid, gchar* targetAddress, gint targetPort) {
+static void _torflowprober_onStreamNew(TorFlowProber* tfp, gint streamid, gint circid,
+        gchar* targetAddress, gint targetPort, gchar* sourceAddress, gint sourcePort) {
 	g_assert(tfp);
+
+	/* if this stream is not from our socks port, dont mess with it */
+	if(sourcePort != (gint)torflow_getHostBoundSocksPort((TorFlow*) tfp)) {
+	    tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_INFO, tfp->_tf._base.id,
+	                "New stream %i on circ %i from %s:%i to %s:%i is not ours, ignoring it",
+	                streamid, circid, sourceAddress, sourcePort, targetAddress, targetPort);
+	    return;
+	}
+
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"New Stream, Attaching to Circuit");
 	if(tfp->internal->measurementCircID) {
