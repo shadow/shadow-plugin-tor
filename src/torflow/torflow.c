@@ -169,7 +169,7 @@ beginsocks:
 
 		g_assert(bytes == 3);
 
-		tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id, "socks sent init");
+		tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "socks sent init");
 
 		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN, tf->_base.slogf);
 		tfd->socksState = S_SOCKSRECVINIT;
@@ -185,7 +185,7 @@ beginsocks:
 			tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
 				"socks init error (read %i bytes)", bytes);
 		} else {
-			tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id, "socks init success");
+			tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "socks init success");
 			torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLOUT, tf->_base.slogf);
 			tfd->socksState = S_SOCKSSENDCONNECT;
 		}
@@ -212,7 +212,7 @@ beginsocks:
 
 		g_assert(bytes == 10);
 
-		tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id,
+		tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
 		        "sent socks server connect to %s at %s:%u",
 		        torflowfileserver_getName(tfd->fileserver),
 		        torflowfileserver_getHostIPStr(tfd->fileserver), ntohs(netPort));
@@ -243,7 +243,7 @@ beginsocks:
 			/* ... but we dont support it */
 			g_assert(serverAddress == 0 && serverPort == 0);
 
-			tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id, "socks connect success");
+			tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "socks connect success");
 
 			torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0, tf->_base.slogf);
 			tfd->socksState = S_READY;
