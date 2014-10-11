@@ -31,25 +31,27 @@ gsize torflowutil_computeTime(struct timespec* start, struct timespec* end) {
 	return millis;
 }
 
-gchar* torflowutil_ipToNewString(in_addr_t ip) {
+gchar* torflowutil_ipToNewString(in_addr_t netIP) {
 	gchar* ipStringBuffer = g_malloc0(INET6_ADDRSTRLEN+1);
-	const gchar* ipString = inet_ntop(AF_INET, &ip, ipStringBuffer, INET6_ADDRSTRLEN);
+	const gchar* ipString = inet_ntop(AF_INET, &netIP, ipStringBuffer, INET6_ADDRSTRLEN);
 	GString* result = ipString ? g_string_new(ipString) : g_string_new("NULL");
 	g_free(ipStringBuffer);
 	return g_string_free(result, FALSE);
 }
 
-in_addr_t torflowutil_lookupAddress(gchar* name, ShadowLogFunc slogf) {
+in_addr_t torflowutil_lookupAddress(const gchar* name, ShadowLogFunc slogf) {
 	struct addrinfo* info = NULL;
-	getaddrinfo((gchar*) name, NULL, NULL, &info);
-	if(!info) {
-		slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
-				"hostname lookup failed '%s'", name);
+	gint ret = getaddrinfo((gchar*) name, NULL, NULL, &info);
+	if(ret != 0 || !info) {
+	    if(slogf) {
+            slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
+                    "hostname lookup failed '%s'", name);
+	    }
 		return 0;
 	}
-	in_addr_t address = ((struct sockaddr_in*)(info->ai_addr))->sin_addr.s_addr;
+	in_addr_t netIP = ((struct sockaddr_in*)(info->ai_addr))->sin_addr.s_addr;
 	freeaddrinfo(info);
-	return address;
+	return netIP;
 }
 
 void torflowutil_resetRelay(TorFlowRelay* relay, gpointer nothing) {

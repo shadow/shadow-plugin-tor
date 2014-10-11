@@ -226,10 +226,7 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 	torflowbase_reportMeasurements((TorFlowBase*) tfp, tfp->internal->sliceSize, tfp->internal->currSlice);
 
 	if(tfp->internal->sybil->fileserver) {
-		g_free(tfp->internal->sybil->fileserver->name);
-		g_free(tfp->internal->sybil->fileserver->addressString);
-		g_free(tfp->internal->sybil->fileserver->portString);
-		g_free(tfp->internal->sybil->fileserver);
+	    torflowfileserver_unref(tfp->internal->sybil->fileserver);
 	}
 
 	g_free(tfp->internal->sybil);
@@ -239,7 +236,7 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
 		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
 		gint pausetime, gint sliceSize,
-		gint controlPort, gint socksPort, TorFlowFileServer* fileserver) {
+		in_port_t controlPort, in_port_t socksPort, TorFlowFileServer* fileserver) {
 
 	TorFlowEventCallbacks events;
 	memset(&events, 0, sizeof(TorFlowEventCallbacks));
@@ -261,7 +258,11 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	tfp->internal->sliceSize = sliceSize;
 	tfp->internal->currSlice = 0;
 	tfp->internal->sybil = g_new0(TorFlowSybil, 1);
-	tfp->internal->sybil->fileserver = fileserver;
+
+	if(fileserver) {
+        torflowfileserver_ref(fileserver);
+        tfp->internal->sybil->fileserver = fileserver;
+	}
 
 	torflow_init((TorFlow*)tfp, &events, slogf, scbf, tfa, controlPort, socksPort);
 

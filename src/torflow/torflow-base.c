@@ -15,7 +15,7 @@ struct _TorFlowBaseInternal {
 	gint epolld;
 
 	/* controlling the tor client */
-	gint controlPort;
+	in_port_t netControlPort;
 	gint controld;
 	TorFlowControlState controlState;
 	GQueue* commands;
@@ -487,7 +487,7 @@ void torflowbase_start(TorFlowBase* tfb) {
 	memset(&serverAddress, 0, sizeof(serverAddress));
 	serverAddress.sin_family = AF_INET;
 	serverAddress.sin_addr.s_addr = htonl(INADDR_LOOPBACK);;
-	serverAddress.sin_port = htons(tfb->internal->controlPort);
+	serverAddress.sin_port = tfb->internal->netControlPort;
 
 	/* connect to server. since we are non-blocking, we expect this to return EINPROGRESS */
 	gint res = connect(tfb->internal->controld, (struct sockaddr *) &serverAddress, sizeof(serverAddress));
@@ -504,19 +504,19 @@ void torflowbase_start(TorFlowBase* tfb) {
 }
 
 void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, gint controlPort, gint epolld) {
+		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld) {
 	g_assert(tfb);
 	g_assert(eventHandlers);
 	g_assert(slogf && scbf);
 
 	GString* idbuf = g_string_new(NULL);
-	g_string_printf(idbuf, "TORFLOW-%i", controlPort);
+	g_string_printf(idbuf, "TORFLOW-%u", ntohs(controlPort));
 	tfb->id = g_string_free(idbuf, FALSE);
 	tfb->slogf = slogf;
 	tfb->scbf = scbf;
 
 	tfb->internal = g_new0(TorFlowBaseInternal, 1);
-	tfb->internal->controlPort = controlPort;
+	tfb->internal->netControlPort = controlPort;
 	tfb->internal->eventHandlers = *eventHandlers;
 	tfb->internal->commands = g_queue_new();
 	tfb->internal->epolld = epolld;

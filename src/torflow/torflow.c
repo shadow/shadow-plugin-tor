@@ -41,7 +41,7 @@ struct _TorFlowInternal {
 	gint epolld;
 
 	/* downloading through tor client */
-	gint socksPort;
+	in_port_t netSocksPort;
 	GHashTable* downloads;
 };
 
@@ -62,7 +62,7 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver) {
 	memset(&serverAddress, 0, sizeof(serverAddress));
 	serverAddress.sin_family = AF_INET;
 	serverAddress.sin_addr.s_addr = htonl(INADDR_LOOPBACK);;
-	serverAddress.sin_port = htons(tf->internal->socksPort);
+	serverAddress.sin_port = tf->internal->netSocksPort;
 
 	/* connect to server. since we are non-blocking, we expect this to return EINPROGRESS */
 	gint res = connect(socksd, (struct sockaddr *) &serverAddress, sizeof(serverAddress));
@@ -79,7 +79,9 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver) {
 	TorFlowDownload* tfd = g_new0(TorFlowDownload, 1);
 	tfd->socksd = socksd;
 	tfd->socksState = S_CONNECTING;
-	tfd->fileserver = fileserver;
+
+    torflowfileserver_ref(fileserver);
+    tfd->fileserver = fileserver;
 
 	g_hash_table_insert(tf->internal->downloads, GINT_TO_POINTER(socksd), tfd);
 
@@ -93,6 +95,9 @@ static void _torflow_freeDownload(TorFlowDownload* tfd) {
 	}
 	if(tfd->filePath) {
 		g_free(tfd->filePath);
+	}
+	if(tfd->fileserver) {
+	    torflowfileserver_unref(tfd->fileserver);
 	}
 	g_free(tfd);
 }
@@ -191,18 +196,26 @@ beginsocks:
 	case S_SOCKSSENDCONNECT: {
 		g_assert(events & EPOLLOUT);
 
+		in_addr_t netIP = torflowfileserver_getNetIP(tfd->fileserver);
+		in_port_t netPort = torflowfileserver_getNetPort(tfd->fileserver);
+
 		gchar sendbuf[64];
-		memset(sendbuf, 0, 64);
+		memset(sendbuf, 0, sizeof(gchar)*64);
 		sendbuf[0] = 0x05;
 		sendbuf[1] = 0x01;
 		sendbuf[2] = 0x00;
 		sendbuf[3] = 0x01;
-		memcpy(sendbuf+4, &(tfd->fileserver->address), 4);
-		memcpy(sendbuf+8, &(tfd->fileserver->port), 2);
+		memcpy(&sendbuf[4], &(netIP), 4);
+		memcpy(&sendbuf[8], &(netPort), 2);
 
 		gint bytes = send(tfd->socksd, sendbuf, 10, 0);
 
 		g_assert(bytes == 10);
+
+		tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id,
+		        "sent socks server connect to %s at %s:%u",
+		        torflowfileserver_getName(tfd->fileserver),
+		        torflowfileserver_getHostIPStr(tfd->fileserver), ntohs(netPort));
 
 		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN, tf->_base.slogf);
 		tfd->socksState = S_SOCKSRECVCONNECT;
@@ -257,8 +270,6 @@ beginsocks:
 				tfd->recvbuf[0], tfd->recvbuf[1], tfd->recvbuf[2], tfd->recvbuf[3]);
 			//tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
 			//	"socks connect error (read %i bytes)", bytes);
-
-
 		}
 
 		/* reset */
@@ -272,7 +283,8 @@ beginsocks:
 		g_assert(events & EPOLLOUT);
 
 		GString* request = g_string_new(NULL);
-		g_string_printf(request, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", tfd->filePath, tfd->fileserver->name);
+		g_string_printf(request, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", tfd->filePath,
+		        torflowfileserver_getName(tfd->fileserver));
 		gint bytes = send(tfd->socksd, request->str, request->len, 0);
 
 		g_assert(bytes == request->len);
@@ -376,7 +388,7 @@ static void _torflow_onFree(TorFlow* tf) {
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, gint controlPort, gint socksPort) {
+		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort) {
 	g_assert(tf);
 	g_assert(eventHandlers);
 
@@ -392,7 +404,7 @@ void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		return;
 	}
 
-	tf->internal->socksPort = socksPort;
+	tf->internal->netSocksPort = socksPort;
 	tf->internal->downloads = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify) _torflow_freeDownload);
 
 	/* store the child events */

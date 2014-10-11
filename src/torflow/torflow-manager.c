@@ -9,110 +9,118 @@ struct _TorFlowManager {
 	ShadowLogFunc slogf;
 	ShadowCreateCallbackFunc scbf;
 	TorFlowAggregator* tfa;
-	TorFlowProber** tfps;
-	gint* tfpeds;
+	GHashTable* probers;
 	gint workers;
 };
 
 static const gchar* USAGE = "USAGE:\n"
-	"  torflow filename pausetime workers slicesize node_cap ctlport0:socksport0:ctlport1:socksport1:... fileserver:fileport \n";
+	"  torflow filename pausetime workers slicesize node_cap ctlport socksport fileserver:fileport \n";
 
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf) {
 	g_assert(slogf);
 	g_assert(scbf);
 
-	if(argc < 8 || argc > 10) {
+	if(argc != 9) {
 		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
 		return NULL;
 	}
 
-	/* use epoll to asynchronously watch events for all of our sockets */
-	gint mainEpollDescriptor = epoll_create(1);
-	if(mainEpollDescriptor == -1) {
-		slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
-				"Error in main epoll_create");
-		close(mainEpollDescriptor);
+	/* argv[0] is the 'program name' and should be ignored */
+	gchar* v3bwPath = argv[1];
+	gint pausetime = atoi(argv[2]);
+	gint numWorkers = atoi(argv[3]);
+
+	if(numWorkers < 1) {
+		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+            "Invalid number of torflow workers (%d). torflow will not operate.", numWorkers);
 		return NULL;
 	}
 
-	/* get file server infos */
-	GQueue* fileservers = g_queue_new();
-	gchar** fsparts = g_strsplit(argv[7], ",", 0);
-	gchar* fspart = NULL;
-	for(gint i = 0; (fspart = fsparts[i]) != NULL; i++) {
-		TorFlowFileServer* fs = g_new0(TorFlowFileServer, 1);
-		gchar** parts = g_strsplit(fspart, ":", 0);
+	gint slicesize = atoi(argv[4]);
+	gdouble nodeCap = atof(argv[5]);
 
-		fs->portString = g_strdup(parts[1]);
-		fs->port = htons((in_port_t) atoi(fs->portString));
+	gint hostControlPort = atoi(argv[6]);
+	g_assert(hostControlPort <= G_MAXUINT16); // TODO log error instead
+    in_port_t netControlPort = htons((in_port_t)hostControlPort);
 
-		fs->name = g_strdup(parts[0]);
-		fs->address = torflowutil_lookupAddress(fs->name, slogf);
-		fs->addressString = torflowutil_ipToNewString(fs->address);
+    gint hostSocksPort = atoi(argv[7]);
+    g_assert(hostSocksPort <= G_MAXUINT16); // TODO log error instead
+    in_port_t netSocksPort = htons((in_port_t)hostSocksPort);
 
-		g_strfreev(parts);
+    /* get file server infos */
+    GQueue* fileservers = g_queue_new();
+    gchar** fsparts = g_strsplit(argv[8], ",", 0);
+    gchar* fspart = NULL;
+    for(gint i = 0; (fspart = fsparts[i]) != NULL; i++) {
+        gchar** parts = g_strsplit(fspart, ":", 0);
+        g_assert(parts[0] && parts[1]);
 
-		g_queue_push_tail(fileservers, fs);
-	}
-	g_strfreev(fsparts);
+        /* the server domain name */
+        gchar* name = parts[0];
 
-	gint pausetime = 0, slicesize = 0;
-	gdouble nodeCap = 0.0;
+        /* port in host order */
+        gchar* hostFilePortStr = parts[1];
+        gint hostFilePort = atoi(hostFilePortStr);
+        g_assert(hostFilePort <= G_MAXUINT16); // TODO log error instead
+        in_port_t netFilePort = htons((in_port_t)hostFilePort);
 
-	pausetime = atoi(argv[2]);
-	slicesize = atoi(argv[4]);
-	nodeCap = atof(argv[5]);
+        TorFlowFileServer* fs = torflowfileserver_new(name, netFilePort);
+        g_assert(fs);
+        g_queue_push_tail(fileservers, fs);
+        g_strfreev(parts);
+
+        slogf(SHADOW_LOG_LEVEL_INFO, __FUNCTION__,
+                "parsed file server %s at %s:%u",
+                torflowfileserver_getName(fs),
+                torflowfileserver_getHostIPStr(fs),
+                ntohs(torflowfileserver_getNetPort(fs)));
+    }
+    g_strfreev(fsparts);
+
+    g_assert(g_queue_get_length(fileservers) > 0); // TODO log error instead
+
+    /* use epoll to asynchronously watch events for all of our sockets */
+    gint mainEpollDescriptor = epoll_create(1);
+    g_assert(mainEpollDescriptor > 0); // TODO log error instead
 
 	TorFlowManager* tfm = g_new0(TorFlowManager, 1);
-	tfm->ed = mainEpollDescriptor;
 	tfm->slogf = slogf;
 	tfm->scbf = scbf;
-	tfm->workers = atoi(argv[3]);
-	if(tfm->workers < 1) {
-		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-				"Invalid number of torflow workers (%d). torflow will not operate.",
-			tfm->workers);
-		tfm->tfps = NULL;
-		tfm->tfpeds = NULL;
-		return NULL;
-	}
+	tfm->workers = numWorkers;
+	tfm->ed = mainEpollDescriptor;
 
-	gchar** portparts = g_strsplit(argv[6], ":", 0);
-	gint* controlPorts = g_new0(gint, tfm->workers);
-	gint* socksPorts = g_new0(gint, tfm->workers);
-	gint i;	
-	for(i = 0; i/2 < tfm->workers && portparts[i]; i++) {
-		if(i % 2 == 0) {
-			controlPorts[i/2] = atoi(portparts[i]);
-		} else {
-			socksPorts[i/2] = atoi(portparts[i]);
-		}
-	}
-	if(i % 2 == 1 || i/2 < tfm->workers) {
-		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-				"Not enough ports specified. torflow will not operate.");
-		return NULL;
-	}
-	g_strfreev(portparts);
+    tfm->tfa = torflowaggregator_new(slogf, v3bwPath, numWorkers, nodeCap);
 
-	tfm->tfa = torflowaggregator_new(slogf, argv[1], tfm->workers, nodeCap);
-	tfm->tfps = g_new0(TorFlowProber*, tfm->workers);
-	tfm->tfpeds = g_new0(int, tfm->workers);
-	for(i = 0; i < tfm->workers; i++) {
-		TorFlowFileServer* probeFileServer = g_queue_pop_head(fileservers);
-		tfm->tfps[i] = torflowprober_new(slogf, scbf, tfm->tfa,
-				i, tfm->workers,
-				pausetime, slicesize,
-				controlPorts[i], socksPorts[i], probeFileServer);
-		tfm->tfpeds[i] = torflow_getEpollDescriptor((TorFlow*)tfm->tfps[i]);
-	}
-	for(i = 0; i < tfm->workers; i++) {
-			torflowutil_epoll(tfm->ed, tfm->tfpeds[i], EPOLL_CTL_ADD,
-				EPOLLIN, tfm->slogf);
-	}
-	g_free(controlPorts);
-	g_free(socksPorts);
-	return tfm;
+    tfm->probers = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify) torflowbase_free);
+
+    for(gint i = 0; i < numWorkers; i++) {
+        /* get the next fileserver */
+        TorFlowFileServer* probeFileServer = g_queue_pop_head(fileservers);
+
+        TorFlowProber* prober = torflowprober_new(slogf, scbf, tfm->tfa, i, numWorkers, pausetime,
+                slicesize, netControlPort, netSocksPort, probeFileServer);
+        g_assert(prober); // TODO log error instead
+
+        /* make sure we watch the prober events on our main epoll */
+        gint proberED = torflow_getEpollDescriptor((TorFlow*)prober);
+        torflowutil_epoll(tfm->ed, proberED, EPOLL_CTL_ADD, EPOLLIN, tfm->slogf);
+
+        /* store the prober by its unique epoll descriptor */
+        g_hash_table_replace(tfm->probers, GINT_TO_POINTER(proberED), prober);
+
+        /* reuse the file server in round robin fashion */
+        g_queue_push_tail(fileservers, probeFileServer);
+    }
+
+    /* the used file servers have been reffed by the probers;
+     * the rest will be safely freed */
+    g_queue_free_full(fileservers, (GDestroyNotify)torflowfileserver_unref);
+
+    tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
+                    "started torflow with %i workers on control port %i and socks port %i",
+                    numWorkers, hostControlPort, hostSocksPort);
+
+    return tfm;
 }
 
 void torflowmanager_ready(TorFlowManager* tfm) {
@@ -120,10 +128,12 @@ void torflowmanager_ready(TorFlowManager* tfm) {
 
 	/* collect the events that are ready */
 	struct epoll_event epevs[1000];
+	memset(epevs, 0, sizeof(struct epoll_event)*1000);
+
 	gint nfds = epoll_wait(tfm->ed, epevs, 1000, 0);
 	if(nfds == -1) {
 		tfm->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
-				"error in epoll_wait");
+				"epoll_wait error %i: %s", errno, g_strerror(errno));
 		return;
 	}
 
@@ -132,14 +142,13 @@ void torflowmanager_ready(TorFlowManager* tfm) {
 		gint d = epevs[i].data.fd;
 		uint32_t e = epevs[i].events;
 
-		gboolean found = FALSE;
-		for(gint j = 0; j < tfm->workers; j++) {
-			if(d == tfm->tfpeds[j]) {
-				torflow_ready((TorFlow*)tfm->tfps[j]);
-				found = TRUE;
-			}
-		}
-		if(!found) {
+
+		TorFlowProber* prober = g_hash_table_lookup(tfm->probers, GINT_TO_POINTER(d));
+		if(prober) {
+            tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
+                "handling events %i for fd %i", e, d);
+            torflow_ready((TorFlow*)prober);
+		} else {
 			tfm->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
 					"helper lookup failed for fd '%i'", d);
 		}
@@ -153,17 +162,9 @@ void torflowmanager_free(TorFlowManager* tfm) {
 		torflowaggregator_free(tfm->tfa);
 	}
 
-	if(tfm->tfps) {
-		for(gint i = 0; i < tfm->workers; i++) {
-			if(tfm->tfps[i]) {
-				torflowbase_free((TorFlowBase*)(tfm->tfps[i]));
-			}
-		}
-		g_free(tfm->tfps);
-	}
-
-	if(tfm->tfpeds) {
-		g_free(tfm->tfpeds);
+	if(tfm->probers) {
+	    /* this calls the free function passed in on hash table creation for all elements */
+	    g_hash_table_destroy(tfm->probers);
 	}
 
 	if(tfm->ed) {

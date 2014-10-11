@@ -385,7 +385,7 @@ def generate(args):
     os.makedirs("torflowauthority")
     v3bwfile = open("torflowauthority/v3bw.init.consensus", "wb")
     os.symlink("v3bw.init.consensus", "torflowauthority/v3bw")
-    print >>v3bwfile, "1",
+    v3bwfile.write("1")
     
     guardnames = []
 
@@ -415,7 +415,7 @@ def generate(args):
         with open("authority_certificate", 'r') as f: 
             for line in f:
                 if 'fingerprint' in line: auth.append(line.strip().split()[1]) # v3ident
-        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), authority.getBWConsensusArg(), name),
+        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), authority.getBWConsensusArg(), name))
         auth.append(fp)
         dirauths.append(auth)
         shutil.move("authority_certificate", "keys/.")
@@ -446,7 +446,7 @@ def generate(args):
             rc, fp = getfp(args.torbin, '../bridgeauthgen.torrc', name)
             os.chdir("..")
             if rc != 0: return rc
-            print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name),
+            v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name))
             auth.append(fp)
             bridgeauths.append(auth)
             i += 1
@@ -467,7 +467,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
+        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.exitguard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -486,7 +486,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
+        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.guard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -504,7 +504,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
+        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.exit.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -522,7 +522,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        print >>v3bwfile, "\nnode_id=${0} bw={1} nick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name),
+        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.middle.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -719,23 +719,52 @@ def addRelayToXML(root, starttime, torargs, fileargs, torrentargs, name, downloa
 
     # applications - wait 5 minutes to start applications
     if torargs is not None:
-        a = etree.SubElement(e, "application")
-        a.set("plugin", "tor")
-        a.set("starttime", "{0}".format(int(starttime)))
-        a.set("arguments", torargs)
-        a = etree.SubElement(e, "application")
-        a.set("plugin", "torctl")
-        a.set("starttime", "{0}".format(int(starttime)+1))
-        a.set("arguments", "localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY")
         if "torflowauthority" in name:
+            ports, servers = [], []
+#            for i in xrange(torflowworkers):
+#                serverport, controlport, socksport = 10000+i, 11000+i, 12000+i
+#                ports.append("{0}:{1}".format(socksport, controlport))
+#                servers.append("torflowauthority:{0}".format(serverport))
+#                a = etree.SubElement(e, "application")
+#                a.set("plugin", "filetransfer")
+#                a.set("starttime", "{0}".format(int(starttime)))
+#                a.set("arguments", "server {0} ~/.shadow/share/".format(serverport))
+#                a = etree.SubElement(e, "application")
+#                a.set("plugin", "tor")
+#                a.set("starttime", "{0}".format(int(starttime)))
+#                mytorargs = torargs.replace("--DataDirectory ./data/${NODEID}", "--DataDirectory ./data/${NODEID}-worker"+str(i))
+#                mytorargs = "{0} --ControlPort {1} --SocksPort {2} --SocksTimeout 5".format(mytorargs, controlport, socksport)
+#                a.set("arguments", mytorargs)
+#                a = etree.SubElement(e, "application")
+#                a.set("plugin", "torctl")
+#                a.set("starttime", "{0}".format(int(starttime)+1))
+#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+            serverport, controlport, socksport = 8080, 9050, 9000
             a = etree.SubElement(e, "application")
             a.set("plugin", "filetransfer")
             a.set("starttime", "{0}".format(int(starttime)))
-            a.set("arguments", "server 443 ~/.shadow/share/")
+            a.set("arguments", "server {0} ~/.shadow/share/".format(serverport))
+            a = etree.SubElement(e, "application")
+            a.set("plugin", "tor")
+            a.set("starttime", "{0}".format(int(starttime)))
+            a.set("arguments", "{0} --ControlPort {1} --SocksPort {2} --SocksTimeout 5".format(torargs, controlport, socksport))
+            a = etree.SubElement(e, "application")
+            a.set("plugin", "torctl")
+            a.set("starttime", "{0}".format(int(starttime)+1))
+            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "torflow")
             a.set("starttime", "{0}".format(int(starttime)+60))
-            a.set("arguments", "data/torflowauthority/v3bw 60 {0} 50 0.5 9051:9000 torflowauthority:443".format(torflowworkers))
+            a.set("arguments", "data/torflowauthority/v3bw 60 {0} 50 0.5 {1} {2} torflowauthority:{3}".format(torflowworkers, controlport, socksport, serverport))
+        else:
+            a = etree.SubElement(e, "application")
+            a.set("plugin", "tor")
+            a.set("starttime", "{0}".format(int(starttime)))
+            a.set("arguments", torargs)
+            a = etree.SubElement(e, "application")
+            a.set("plugin", "torctl")
+            a.set("starttime", "{0}".format(int(starttime)+1))
+            a.set("arguments", "localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY")
     if fileargs is not None:
         a = etree.SubElement(e, "application")
         a.set("plugin", "filetransfer")

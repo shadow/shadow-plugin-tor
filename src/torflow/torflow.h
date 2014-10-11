@@ -23,13 +23,7 @@
 #include <glib.h>
 #include <shd-library.h>
 
-typedef struct _TorFlowFileServer {
-	gchar* name;
-	gchar* addressString;
-	gchar* portString;
-	in_addr_t address;
-	in_port_t port;
-} TorFlowFileServer;
+typedef struct _TorFlowFileServer TorFlowFileServer;
 
 typedef struct _TorFlowSybil {
 	gint measurementCircID;
@@ -87,7 +81,7 @@ struct _TorFlowBase {
 };
 
 void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, gint controlPort, gint epolld);
+		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld);
 void torflowbase_free(TorFlowBase* tfb);
 void torflowbase_start(TorFlowBase* tfb);
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events);
@@ -121,7 +115,7 @@ struct _TorFlow {
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, gint controlPort, gint socksPort);
+		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort);
 gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver);
 void torflow_freeDownload(TorFlow* tf, gint socksd);
 void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath);
@@ -138,7 +132,7 @@ struct _TorFlowProber {
 TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
 		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
 		gint pausetime, gint sliceSize,
-		gint controlPort, gint socksPort, TorFlowFileServer* fileserver);
+		in_port_t controlPort, in_port_t socksPort, TorFlowFileServer* fileserver);
 
 typedef struct _TorFlowManager TorFlowManager;
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf);
@@ -147,11 +141,19 @@ void torflowmanager_free(TorFlowManager* tfm);
 
 void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events, ShadowLogFunc slogf);
 gsize torflowutil_computeTime(struct timespec* start, struct timespec* end);
-in_addr_t torflowutil_lookupAddress(gchar* name, ShadowLogFunc slogf);
-gchar* torflowutil_ipToNewString(in_addr_t ip);
+in_addr_t torflowutil_lookupAddress(const gchar* name, ShadowLogFunc slogf);
+gchar* torflowutil_ipToNewString(in_addr_t netIP);
 void torflowutil_resetRelay(TorFlowRelay* relay, gpointer nothing);
 gint torflowutil_meanBandwidth(TorFlowRelay* relay);
 gint torflowutil_filteredBandwidth(TorFlowRelay* relay, gint meanBandwidth);
 GString* torflowutil_base64ToBase16(GString* base64);
+
+TorFlowFileServer* torflowfileserver_new(const gchar* name, in_port_t networkPort);
+void torflowfileserver_ref(TorFlowFileServer* tffs);
+void torflowfileserver_unref(TorFlowFileServer* tffs);
+in_addr_t torflowfileserver_getNetIP(TorFlowFileServer* tffs);
+in_port_t torflowfileserver_getNetPort(TorFlowFileServer* tffs);
+const gchar* torflowfileserver_getName(TorFlowFileServer* tffs);
+const gchar*  torflowfileserver_getHostIPStr(TorFlowFileServer* tffs);
 
 #endif /* TORFLOW_H_ */
