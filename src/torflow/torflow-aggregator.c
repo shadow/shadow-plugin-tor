@@ -193,7 +193,7 @@ void torflowaggregator_reportInitial(TorFlowAggregator* tfa, GSList* relays) {
 	} else {
 		tfa->gotInitial = TRUE;
 	}
-	
+
 	//add all relays that the worker measured to our stats list
 	for(GSList* currentNode = relays; currentNode; currentNode = g_slist_next(currentNode)) {
 		TorFlowRelay* current = currentNode->data;
@@ -204,7 +204,7 @@ void torflowaggregator_reportInitial(TorFlowAggregator* tfa, GSList* relays) {
 		tfrs->advertisedBandwidth = current->advertisedBandwidth;
 		tfrs->meanBandwidth = current->descriptorBandwidth;
 		tfrs->filteredBandwidth = current->descriptorBandwidth;
-		g_hash_table_insert(tfa->relayStats, tfrs->identity->str, tfrs);
+		g_hash_table_replace(tfa->relayStats, tfrs->identity->str, tfrs);
 	}
 }
 
@@ -224,7 +224,7 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measur
 			tfrs->advertisedBandwidth = current->advertisedBandwidth;
 			tfrs->meanBandwidth = torflowutil_meanBandwidth(current);
 			tfrs->filteredBandwidth = torflowutil_filteredBandwidth(current, tfrs->meanBandwidth);
-			g_hash_table_insert(tfa->relayStats, tfrs->identity->str, tfrs);
+			g_hash_table_replace(tfa->relayStats, tfrs->identity->str, tfrs);
 		}
 		currentNode = g_slist_next(currentNode);
 		i++;
