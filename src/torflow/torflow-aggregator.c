@@ -7,7 +7,7 @@
 struct _TorFlowAggregator {
 	ShadowLogFunc slogf;
 	gint numWorkers;
-	gboolean gotInitial;
+	gboolean loadedInitial;
 	GString* filepath;
 	GHashTable* relayStats;
 	gdouble nodeCap;
@@ -28,8 +28,12 @@ static void _torflowaggregator_torFlowRelayStatsFree(gpointer toFree) {
 	TorFlowRelayStats* tfrs = (TorFlowRelayStats*)toFree;
 	g_assert(tfrs);
 	
-	g_string_free(tfrs->nickname, TRUE);
-	g_string_free(tfrs->identity, TRUE);
+	if(tfrs->nickname) {
+		g_string_free(tfrs->nickname, TRUE);
+	}
+	if(tfrs->identity) {
+		g_string_free(tfrs->identity, TRUE);
+	}
 	g_free(tfrs);
 }
 
@@ -160,6 +164,8 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 	 * node_id=${}\tbw={}\tnick={}
 	 * ```
 	 * notice there is no newline on the last line.
+	 * 
+	 * Also of note - this contradicts the torflow spec.
 	 */
 	g_hash_table_iter_init(&iter, tfa->relayStats);
 	while(g_hash_table_iter_next(&iter, &key, &value)) {
@@ -184,28 +190,100 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 	g_string_free(newFilename, TRUE);
 }
 
-void torflowaggregator_reportInitial(TorFlowAggregator* tfa, GSList* relays) {
+void _torflowaggregator_readInitialAdvertisements(TorFlowAggregator* tfa) {
 	g_assert(tfa);
 
-	//We only need to populate with initial data once.
-	if(tfa->gotInitial) {
+	if(tfa->loadedInitial) {
+		tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
+				"Already loaded initial advertisements");
 		return;
-	} else {
-		tfa->gotInitial = TRUE;
 	}
 
-	//add all relays that the worker measured to our stats list
+	//Open file for reading
+	FILE * fp;
+	fp = fopen(tfa->filepath->str, "r");
+	if (fp == NULL) {
+		tfa->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
+				"Could not open v3bw file %s for reading", tfa->filepath);
+		return;
+	}
+	gchar* line = NULL;
+	gsize len = 0;
+	gssize read;
+	//Attempt to read first line, which must be timestamp and is therefore useless to us
+	if (getline(&line, &len, fp) == -1) {
+		tfa->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
+				"Error reading from v3bw file %s", tfa->filepath);
+		return;
+	}
+
+	//read information for each relay
+	while((read = getline(&line, &len, fp)) != -1) {
+		gchar** rparts = g_strsplit(line, "\t", 0);
+		gchar* rpart = NULL;
+
+		TorFlowRelayStats* tfrs = g_new(TorFlowRelayStats, 1);
+		tfrs->nickname = tfrs->identity = NULL;
+		tfrs->descriptorBandwidth = tfrs->advertisedBandwidth = 0;
+
+		for(gint i = 0; (rpart = rparts[i]) != NULL; i++) {
+
+			gchar** iparts = g_strsplit(rpart,"=", 2);
+			if(!(iparts[0] && iparts[1])) {
+				tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+						"Error parsing token %s from v3bw file %s", rpart, tfa->filepath);
+				continue;
+			} else if(g_strcmp0(iparts[0], "node_id") == 0) {
+				tfrs->identity = g_string_new(iparts[1]+1); //excluding dollar sign
+			} else if(g_strcmp0(iparts[0], "nick") == 0) {
+				tfrs->nickname = g_string_new(iparts[1]);
+			} else if(g_strcmp0(iparts[0], "bw") == 0) {
+				tfrs->descriptorBandwidth = tfrs->advertisedBandwidth = tfrs->meanBandwidth = tfrs->filteredBandwidth = atoi(iparts[1]);
+			} else if(g_strcmp0(iparts[0], "measured_at") == 0) {
+				//ignore useless but recognized data
+			} else {
+				tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+						"Unrecognized field %s in v3bw file", iparts[0]);
+			}
+		}
+		
+		if(!tfrs->identity) {
+			tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+					"No node_id found in line %s in v3bw file", line);
+			_torflowaggregator_torFlowRelayStatsFree(tfrs);
+		} else {
+			g_hash_table_replace(tfa->relayStats, tfrs->identity->str, tfrs);
+		}
+	}
+	free(line);
+	fclose(fp);
+}
+
+void torflowaggregator_initialLoad(TorFlowAggregator* tfa, GSList* relays) {
+	g_assert(tfa);
+
+	//Preload advertisements from file; do this only once
+	if(!tfa->loadedInitial) {
+		_torflowaggregator_readInitialAdvertisements(tfa);
+		tfa->loadedInitial = TRUE;
+	}
+
+	//Go through relays - update them with preloaded stats
 	for(GSList* currentNode = relays; currentNode; currentNode = g_slist_next(currentNode)) {
 		TorFlowRelay* current = currentNode->data;
-		TorFlowRelayStats* tfrs = g_new0(TorFlowRelayStats, 1);
-		tfrs->nickname = g_string_new(current->nickname->str);
-		tfrs->identity = g_string_new(current->identity->str);
-		tfrs->descriptorBandwidth = current->descriptorBandwidth;
-		tfrs->advertisedBandwidth = current->advertisedBandwidth;
-		tfrs->meanBandwidth = current->descriptorBandwidth;
-		tfrs->filteredBandwidth = current->descriptorBandwidth;
-		g_hash_table_replace(tfa->relayStats, tfrs->identity->str, tfrs);
+		TorFlowRelayStats* stats = g_hash_table_lookup(tfa->relayStats, current->identity->str);
+		if(!stats) {
+			tfa->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+					"Relay %s read in descriptor from torctl port, but not found in initialization file",
+					current->identity->str);
+			continue;
+		}
+		tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "for $%s, descriptorBandwidth was %i, advertisedBandwidth was %i",
+				current->identity->str, current->descriptorBandwidth, current->advertisedBandwidth);
+			current->descriptorBandwidth = stats->descriptorBandwidth;
+			current->advertisedBandwidth = stats->advertisedBandwidth;
 	}
+
 }
 
 void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measuredRelays, gint sliceSize, gint currSlice) {
@@ -259,7 +337,7 @@ TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf,
 	tfa->nodeCap = nodeCap;
 	tfa->version = 0;
 	tfa->relayStats = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, _torflowaggregator_torFlowRelayStatsFree);
-	tfa->gotInitial = FALSE;
+	tfa->loadedInitial = FALSE;
 
 	return tfa;
 }

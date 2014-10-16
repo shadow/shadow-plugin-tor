@@ -14,11 +14,12 @@ struct _TorFlowProberInternal {
 	gint numRelays;
 	gint minSlice;
 	gint maxSlice;
-    gint measurementCircID;
-    gint measurementStreamID;
-    gboolean measurementStreamSucceeded;
-    gint downloadSD;
-    TorFlowFileServer* fileserver;
+	gint measurementCircID;
+	gint measurementStreamID;
+	gboolean measurementStreamSucceeded;
+	gint downloadSD;
+	gboolean initialized;
+	TorFlowFileServer* fileserver;
 };
 
 static void _torflowprober_downloadFile(TorFlowProber* tfp) {
@@ -130,8 +131,11 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 	tfp->internal->relays = relayList;
 	tfp->internal->numRelays = g_slist_length(relayList);
 
-	// Prepare the aggregator to with initial values
-	torflowaggregator_reportInitial(tfp->_tf.tfa, tfp->internal->relays);
+	// If not initialized, load initial advertised values
+	if(!tfp->internal->initialized) {
+		torflowaggregator_initialLoad(tfp->_tf.tfa, tfp->internal->relays);
+		tfp->internal->initialized = TRUE;
+	}
 
 	// Calculate the first slice this worker can work on
 	gint numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
@@ -271,6 +275,7 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
 	tfp->internal->pausetime = pausetime;
 	tfp->internal->sliceSize = sliceSize;
 	tfp->internal->currSlice = 0;
+	tfp->internal->initialized = FALSE;
 
 	if(fileserver) {
         torflowfileserver_ref(fileserver);

@@ -95,7 +95,7 @@ void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid);
 
 typedef struct _TorFlowAggregator TorFlowAggregator;
 
-void torflowaggregator_reportInitial(TorFlowAggregator* tfa, GSList* relays);
+void torflowaggregator_initialLoad(TorFlowAggregator* tfa, GSList* relays);
 void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measuredRelays, gint sliceSize, gint currSlice);
 void torflowaggregator_free(TorFlowAggregator* tfa);
 TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gint numWorkers, gdouble nodeCap);

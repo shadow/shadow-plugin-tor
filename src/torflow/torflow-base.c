@@ -580,8 +580,8 @@ gint torflowbase_getControlSD(TorFlowBase* tfb) {
 }
 
 const gchar* torflowbase_getCurrentPath(TorFlowBase* tfb) {
-    g_assert(tfb);
-    return tfb->internal->cachedCircPath;
+	g_assert(tfb);
+	return tfb->internal->cachedCircPath;
 }
 
 void torflowbase_requestInfo(TorFlowBase* tfb) {
