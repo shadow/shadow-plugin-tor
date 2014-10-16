@@ -259,16 +259,17 @@ void _torflowaggregator_readInitialAdvertisements(TorFlowAggregator* tfa) {
 	fclose(fp);
 }
 
-void torflowaggregator_initialLoad(TorFlowAggregator* tfa, GSList* relays) {
+gint torflowaggregator_loadFromPresets(TorFlowAggregator* tfa, GSList* relays) {
 	g_assert(tfa);
 
+	gint changes = 0;
 	//Preload advertisements from file; do this only once
 	if(!tfa->loadedInitial) {
 		_torflowaggregator_readInitialAdvertisements(tfa);
 		tfa->loadedInitial = TRUE;
 	}
 
-	//Go through relays - update them with preloaded stats
+	//Go through relays - update them with preset stats
 	for(GSList* currentNode = relays; currentNode; currentNode = g_slist_next(currentNode)) {
 		TorFlowRelay* current = currentNode->data;
 		TorFlowRelayStats* stats = g_hash_table_lookup(tfa->relayStats, current->identity->str);
@@ -280,10 +281,15 @@ void torflowaggregator_initialLoad(TorFlowAggregator* tfa, GSList* relays) {
 		}
 		tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "for $%s, descriptorBandwidth was %i, advertisedBandwidth was %i",
 				current->identity->str, current->descriptorBandwidth, current->advertisedBandwidth);
+		if (current->descriptorBandwidth == 0) {
 			current->descriptorBandwidth = stats->descriptorBandwidth;
 			current->advertisedBandwidth = stats->advertisedBandwidth;
+			changes++;
+		}
 	}
 
+	//return the number of relays that changed as a result of this
+	return changes;
 }
 
 void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measuredRelays, gint sliceSize, gint currSlice) {
