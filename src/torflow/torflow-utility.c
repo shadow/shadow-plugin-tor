@@ -105,3 +105,11 @@ GString* torflowutil_base64ToBase16(GString* base64) {
 	g_free(bin_len);
 	return base16;
 }
+
+
+// Compare function to sort in descending order by bandwidth.
+gint torflowutil_compareRelays(gconstpointer a, gconstpointer b){
+	TorFlowRelay * aR = (TorFlowRelay *)a;
+	TorFlowRelay * bR = (TorFlowRelay *)b;
+	return bR->descriptorBandwidth - aR->descriptorBandwidth;
+}

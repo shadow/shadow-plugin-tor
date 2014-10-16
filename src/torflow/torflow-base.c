@@ -42,13 +42,6 @@ struct _TorFlowBaseInternal {
 	GString* receiveLineBuffer;
 };
 
-// Compare function to sort in descending order by bandwidth.
-static gint _torflowbase_compareRelays(gconstpointer a, gconstpointer b){
-	TorFlowRelay * aR = (TorFlowRelay *)a;
-	TorFlowRelay * bR = (TorFlowRelay *)b;
-	return bR->descriptorBandwidth - aR->descriptorBandwidth;
-}
-
 static gint _torflowbase_parseCode(gchar* line) {
 	gchar** parts1 = g_strsplit(line, " ", 0);
 	gchar** parts2 = g_strsplit_set(parts1[0], "-+", 0);
@@ -239,7 +232,7 @@ static void _torflowbase_processDescriptorLine(TorFlowBase* tfb, GString* linebu
 			tfb->internal->tempRelay->advertisedBandwidth = tfb->internal->tempRelay->descriptorBandwidth;
 			if(tfb->internal->tempRelay->fast && tfb->internal->tempRelay->running) {
 				tfb->internal->relays = g_slist_insert_sorted(tfb->internal->relays, 
-						tfb->internal->tempRelay, _torflowbase_compareRelays);
+						tfb->internal->tempRelay, torflowutil_compareRelays);
 				tfb->internal->numRelays++; 
 			} else {
 				g_free(tfb->internal->tempRelay);
@@ -733,6 +726,12 @@ void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize r
 	tfb->internal->exitRelay->t_total = g_slist_prepend(tfb->internal->exitRelay->t_total, GINT_TO_POINTER(totalTime));
 	tfb->internal->exitRelay->bytesPushed = g_slist_prepend(tfb->internal->exitRelay->bytesPushed, GINT_TO_POINTER(contentLength));
 	tfb->internal->exitRelay->measureCount++;
+}
+
+void torflowbase_updateRelays(TorFlowBase* tfb, GSList* relays) {
+	g_assert(tfb);
+
+	tfb->internal->relays = relays;
 }
 
 void torflowbase_recordTimeout(TorFlowBase* tfb) {

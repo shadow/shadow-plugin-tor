@@ -89,6 +89,7 @@ void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint cir
 void torflowbase_stopReading(TorFlowBase* tfb, gchar* addressString);
 void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime);
 void torflowbase_recordTimeout(TorFlowBase* tfb);
+void torflowbase_updateRelays(TorFlowBase* tfb, GSList* relays);
 void torflowbase_enableCircuits(TorFlowBase* tfb);
 void torflowbase_closeStreams(TorFlowBase* tfb, gchar* addressString);
 void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid);
@@ -143,6 +144,7 @@ void torflowutil_resetRelay(TorFlowRelay* relay, gpointer nothing);
 gint torflowutil_meanBandwidth(TorFlowRelay* relay);
 gint torflowutil_filteredBandwidth(TorFlowRelay* relay, gint meanBandwidth);
 GString* torflowutil_base64ToBase16(GString* base64);
+gint torflowutil_compareRelays(gconstpointer a, gconstpointer b);
 
 TorFlowFileServer* torflowfileserver_new(const gchar* name, in_port_t networkPort);
 void torflowfileserver_ref(TorFlowFileServer* tffs);

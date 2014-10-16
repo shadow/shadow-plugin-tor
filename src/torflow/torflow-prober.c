@@ -134,6 +134,8 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 	// If not initialized, load initial advertised values
 	if(!tfp->internal->initialized) {
 		torflowaggregator_initialLoad(tfp->_tf.tfa, tfp->internal->relays);
+		tfp->internal->relays = g_slist_sort(tfp->internal->relays, torflowutil_compareRelays);
+		torflowbase_updateRelays((TorFlowBase*)tfp, tfp->internal->relays);
 		tfp->internal->initialized = TRUE;
 	}
 
