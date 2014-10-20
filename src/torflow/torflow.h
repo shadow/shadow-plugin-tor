@@ -99,7 +99,7 @@ typedef struct _TorFlowAggregator TorFlowAggregator;
 gint torflowaggregator_loadFromPresets(TorFlowAggregator* tfa, GSList* relays);
 void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measuredRelays, gint sliceSize, gint currSlice);
 void torflowaggregator_free(TorFlowAggregator* tfa);
-TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gint numWorkers, gdouble nodeCap);
+TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gint sliceSize, gdouble nodeCap);
 
 typedef struct _TorFlow TorFlow;
 typedef struct _TorFlowInternal TorFlowInternal;

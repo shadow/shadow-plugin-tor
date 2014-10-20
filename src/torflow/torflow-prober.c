@@ -136,6 +136,7 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 		if (torflowaggregator_loadFromPresets(tfp->_tf.tfa, tfp->internal->relays) == 0) {
 			tfp->internal->initialized = TRUE;
 		} else {
+			tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id, "Loaded from presets");	
 			tfp->internal->relays = g_slist_sort(tfp->internal->relays, torflowutil_compareRelays);
 			torflowbase_updateRelays((TorFlowBase*)tfp, tfp->internal->relays);
 		}
@@ -147,6 +148,8 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 	gdouble maxPct = ((gdouble)tfp->internal->workerID+1.0)/tfp->internal->numWorkers;
 	tfp->internal->minSlice = (gint)(numSlices * minPct);
 	tfp->internal->maxSlice = (gint)(numSlices * maxPct);
+	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
+			"Measuring slices %d through %d", tfp->internal->minSlice, tfp->internal->maxSlice-1);
 	tfp->internal->currSlice =  tfp->internal->minSlice - 1;
 
 	gboolean goodSlice;
@@ -158,7 +161,7 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 
 	// Report an odd corner case where all slices are bad
 	if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
-		tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_WARNING, tfp->_tf._base.id,
+		tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tfp->_tf._base.id,
 			"No measureable slices for TorFlow!");
 	}
 }

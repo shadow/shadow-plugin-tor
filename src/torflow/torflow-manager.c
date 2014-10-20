@@ -89,7 +89,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	tfm->workers = numWorkers;
 	tfm->ed = mainEpollDescriptor;
 
-    tfm->tfa = torflowaggregator_new(slogf, v3bwPath, numWorkers, nodeCap);
+    tfm->tfa = torflowaggregator_new(slogf, v3bwPath, slicesize, nodeCap);
 
     tfm->probers = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify) torflowbase_free);
 
