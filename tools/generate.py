@@ -385,7 +385,7 @@ def generate(args):
     os.makedirs("torflowauthority")
     v3bwfile = open("torflowauthority/v3bw.init.consensus", "wb")
     os.symlink("v3bw.init.consensus", "torflowauthority/v3bw")
-    v3bwfile.write("1")
+    v3bwfile.write("1\n")
     
     guardnames = []
 
@@ -400,9 +400,12 @@ def generate(args):
         guardnames.append(name)
 
         # add to shadow hosts file
+        #authority = guards_nodes.pop()
+        #torargs = "{0} -f tor.authority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
+        #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
-        torargs = "{0} -f tor.authority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
+        torargs = "{0} -f tor.authority.torrc".format(default_tor_args)
+        addRelayToXML(root, starttime, torargs, None, None, name, download=1048576, upload=1048576)
 
         # generate keys for tor
         os.makedirs(name)
@@ -415,7 +418,7 @@ def generate(args):
         with open("authority_certificate", 'r') as f: 
             for line in f:
                 if 'fingerprint' in line: auth.append(line.strip().split()[1]) # v3ident
-        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), authority.getBWConsensusArg(), name))
+        v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), authority.getBWConsensusArg(), name))
         auth.append(fp)
         dirauths.append(auth)
         shutil.move("authority_certificate", "keys/.")
@@ -446,7 +449,7 @@ def generate(args):
             rc, fp = getfp(args.torbin, '../bridgeauthgen.torrc', name)
             os.chdir("..")
             if rc != 0: return rc
-            v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name))
+            v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name))
             auth.append(fp)
             bridgeauths.append(auth)
             i += 1
@@ -467,7 +470,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
+        v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.exitguard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -486,7 +489,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
+        v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.guard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -504,7 +507,7 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
+        v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.exit.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
@@ -522,13 +525,14 @@ def generate(args):
         rc, fp = getfp(args.torbin, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
-        v3bwfile.write("\nnode_id=${0}\tbw={1}\tnick={2}".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
+        v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.middle.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
+    v3bwfile.close()
     os.chdir("..") # move out of initdata dir
 
     # clients
@@ -1113,8 +1117,9 @@ V3AuthoritativeDirectory 1\n\
 ORPort 9111\n\
 DirPort 9112\n\
 SocksPort 0\n\
-V3BandwidthsFile data/torflowauthority/v3bw\n\
-TestingDirAuthVoteGuard {0}\n'.format(",".join(guardnames)) # note - also need exit policy
+V3BandwidthsFile data/torflowauthority/v3bw\n'
+# the following option needs more testing
+#TestingDirAuthVoteGuard {0}\n'.format(",".join(guardnames)) # note - also need exit policy
     bridgeauths = \
 'AuthoritativeDirectory 1\n\
 BridgeAuthoritativeDir 1\n\
