@@ -573,32 +573,34 @@ def parse(args):
         lastt = 0
 
         for line in f:
-            parts = line.strip().split()
-            if len(parts) < 1 or parts[0].find(':') < 0: continue
+            try:
+                parts = line.strip().split()
+                if len(parts) < 1 or parts[0].find(':') < 0: continue
 
-            nodename = parts[4]
+                nodename = parts[4]
 
-            # timing
-            realts, virtualts = parts[0], parts[2]
-            if realts != "n/a" and virtualts != "n/a":
-                realt = parsetimestamp(realts)
-                virtualt = parsetimestamp(virtualts)
+                # timing
+                realts, virtualts = parts[0], parts[2]
+                if realts != "n/a" and virtualts != "n/a":
+                    realt = parsetimestamp(realts)
+                    virtualt = parsetimestamp(virtualts)
 
-                # only save timestamps once per virtual second
-                if virtualt >= (lastt + 1):
-                    times['real'].append(realt/3600.0)
-                    times['virtual'].append(virtualt/3600.0)
-                    lastt = virtualt
+                    # only save timestamps once per virtual second
+                    if virtualt >= (lastt + 1):
+                        times['real'].append(realt/3600.0)
+                        times['virtual'].append(virtualt/3600.0)
+                        lastt = virtualt
 
-                # now parse the node-specific stats
-                if nodename == "[n/a]": continue
-                name = nodename[1:nodename.index("-")]
-                if 'client' in name:
-                    if name not in clients: clients[name] = ClientStats(name)
-                    clients[name].parse(parts)
-                elif 'exit' in name or 'relay' in name or 'uthority' in name:
-                    if name not in relays: relays[name] = RelayStats(name)
-                    relays[name].parse(parts)
+                    # now parse the node-specific stats
+                    if nodename == "[n/a]": continue
+                    name = nodename[1:nodename.index("-")]
+                    if 'client' in name:
+                        if name not in clients: clients[name] = ClientStats(name)
+                        clients[name].parse(parts)
+                    elif 'exit' in name or 'relay' in name or 'uthority' in name:
+                        if name not in relays: relays[name] = RelayStats(name)
+                        relays[name].parse(parts)
+            except: continue
 
     # aggregate and save results
     print "Saving results to '{0}'".format(outputpath)
