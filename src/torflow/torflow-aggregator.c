@@ -6,7 +6,9 @@
 
 struct _TorFlowAggregator {
 	ShadowLogFunc slogf;
-	gint numWorkers;
+	gint numSlices;
+	gint sliceSize;
+	gboolean* seenSlice;
 	gboolean loadedInitial;
 	GString* filepath;
 	GHashTable* relayStats;
@@ -152,7 +154,7 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 
 	FILE * fp;
 	fp = fopen(newFilename->str, "w");
-	fprintf(fp, "%li", now_ts.tv_sec);
+	fprintf(fp, "%li\n", now_ts.tv_sec);
 
 	//loop through nodes and cap bandwidths that are too large, then print to file
 	/*
@@ -161,11 +163,9 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 	 * {}\n
 	 * node_id=${}\tbw={}\tnick={}\n
 	 * [...]
-	 * node_id=${}\tbw={}\tnick={}
+	 * node_id=${}\tbw={}\tnick={}\n
 	 * ```
-	 * notice there is no newline on the last line.
-	 * 
-	 * Also of note - this contradicts the torflow spec.
+	 * notice there is a newline on the last line.
 	 */
 	g_hash_table_iter_init(&iter, tfa->relayStats);
 	while(g_hash_table_iter_next(&iter, &key, &value)) {
@@ -177,7 +177,7 @@ static void _torflowaggregator_printToFile(TorFlowAggregator* tfa) {
 			current->newBandwidth = (gint)(totalBW * tfa->nodeCap);
 		}
 
-		fprintf(fp, "\nnode_id=$%s\tbw=%i\tnick=%s",
+		fprintf(fp, "node_id=$%s\tbw=%i\tnick=%s\n",
 				current->identity->str,
 				current->newBandwidth,
 				current->nickname->str);
@@ -257,6 +257,16 @@ void _torflowaggregator_readInitialAdvertisements(TorFlowAggregator* tfa) {
 	}
 	free(line);
 	fclose(fp);
+
+	//figure out how many slices there will be
+	tfa->numSlices = (g_hash_table_size(tfa->relayStats)+tfa->sliceSize-1)/tfa->sliceSize;
+	tfa->seenSlice = g_new(gboolean, tfa->numSlices);
+	for(gint i = 0; i < tfa->numSlices; i++) {
+		tfa->seenSlice[i] = FALSE;
+	}
+	tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "Expecting %d slices", tfa->numSlices);
+
+	tfa->loadedInitial = TRUE;
 }
 
 gint torflowaggregator_loadFromPresets(TorFlowAggregator* tfa, GSList* relays) {
@@ -266,7 +276,6 @@ gint torflowaggregator_loadFromPresets(TorFlowAggregator* tfa, GSList* relays) {
 	//Preload advertisements from file; do this only once
 	if(!tfa->loadedInitial) {
 		_torflowaggregator_readInitialAdvertisements(tfa);
-		tfa->loadedInitial = TRUE;
 	}
 
 	//Go through relays - update them with preset stats
@@ -319,12 +328,28 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measur
 		i++;
 	}
 
+	//tfa->seenSlice is NULL when we're done checking if we've got all slices
+	if(tfa->seenSlice) {
+		tfa->seenSlice[currSlice] = TRUE;
+		for(i = 0; i < tfa->numSlices; i++) {
+			if(!tfa->seenSlice[i]) {
+				return; //don't print if we still have slices yet
+			}
+		}
+		g_free(tfa->seenSlice);
+		tfa->seenSlice = NULL;
+	}	
+
 	//print results to file	
 	_torflowaggregator_printToFile(tfa);
 }
 
 void torflowaggregator_free(TorFlowAggregator* tfa) {
 	g_assert(tfa);
+
+	if(tfa->seenSlice) {
+		g_free(tfa->seenSlice);
+	}
 
 	g_hash_table_destroy(tfa->relayStats);
 
@@ -333,12 +358,12 @@ void torflowaggregator_free(TorFlowAggregator* tfa) {
 }
 
 TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf,
-		gchar* filename, gint numWorkers, gdouble nodeCap) {
+		gchar* filename, gint sliceSize, gdouble nodeCap) {
 
 	TorFlowAggregator* tfa = g_new0(TorFlowAggregator, 1);
 	tfa = g_new0(TorFlowAggregator, 1);
 	tfa->slogf = slogf;
-	tfa->numWorkers = numWorkers;
+	tfa->sliceSize = sliceSize;
 	tfa->filepath = g_string_new(filename);
 	tfa->nodeCap = nodeCap;
 	tfa->version = 0;
