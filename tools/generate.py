@@ -215,19 +215,20 @@ def main():
     if args.torbin is None or args.torgencertbin is None: 
         log("please ensure 'tor' and 'tor-gencert' are in your 'PATH'")
         exit(-1)
+    args.devnull = open("/dev/null", 'wb')
     
     generate(args)
     log("finished generating:\n{0}/relays.csv\n{0}/shadow.config.xml\n{0}/filetransfer.im.dl\n{0}/filetransfer.web.dl\n{0}/filetransfer.bulk.dl\n{0}/filetransfer.webthink.dat\n{0}/filetransfer.imthink.dat\n{0}/filetransfer.perfthink.dat".format(os.getcwd()))
 
-def getfp(torbin, torrc, name, datadir="."):
+def getfp(args, torrc, name, datadir="."):
     """Run Tor with --list-fingerprint to get its fingerprint, read
     the fingerprint file and return the fingerprint. Uses current
     directory for DataDir. Returns a two-element list where the first
     element is an integer return code from running tor (0 for success)
     and the second is a string with the fingerprint, or None on
     failure."""
-    listfp = "{0} --list-fingerprint --DataDirectory {2} --Nickname {3} -f {1}".format(torbin, torrc, datadir, name)
-    retcode = subprocess.call(shlex.split(listfp))
+    listfp = "{0} --list-fingerprint --DataDirectory {2} --Nickname {3} -f {1}".format(args.torbin, torrc, datadir, name)
+    retcode = subprocess.call(shlex.split(listfp), stdout=args.devnull, stderr=subprocess.STDOUT)
     if retcode !=0: return retcode, None
     fp = None
     with open("{0}/fingerprint".format(datadir), 'r') as f:
@@ -410,10 +411,10 @@ def generate(args):
         # generate keys for tor
         os.makedirs(name)
         os.chdir(name)
-        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        rc, fp = getfp(args, '../authgen.torrc', name)
         if rc != 0: return rc
         gencert = "{0} --create-identity-key -m 24 --passphrase-fd 0".format(args.torgencertbin)
-        with open("../authgen.pw", 'r') as pwin: retcode = subprocess.call(shlex.split(gencert), stdin=pwin)
+        with open("../authgen.pw", 'r') as pwin: retcode = subprocess.call(shlex.split(gencert), stdin=pwin, stdout=args.devnull, stderr=subprocess.STDOUT)
         if retcode !=0: return retcode
         with open("authority_certificate", 'r') as f: 
             for line in f:
@@ -446,7 +447,7 @@ def generate(args):
             # generate certificate in order to get the fingerprint
             os.makedirs(name)
             os.chdir(name)
-            rc, fp = getfp(args.torbin, '../bridgeauthgen.torrc', name)
+            rc, fp = getfp(args, '../bridgeauthgen.torrc', name)
             os.chdir("..")
             if rc != 0: return rc
             v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name))
@@ -467,7 +468,7 @@ def generate(args):
         guardnames.append(name)
         os.makedirs(name)
         os.chdir(name)
-        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        rc, fp = getfp(args, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -486,7 +487,7 @@ def generate(args):
         guardnames.append(name)
         os.makedirs(name)
         os.chdir(name)
-        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        rc, fp = getfp(args, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -504,7 +505,7 @@ def generate(args):
         name = "relayexit{0}".format(i)
         os.makedirs(name)
         os.chdir(name)
-        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        rc, fp = getfp(args, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -522,7 +523,7 @@ def generate(args):
         name = "relaymiddle{0}".format(i)
         os.makedirs(name)
         os.chdir(name)
-        rc, fp = getfp(args.torbin, '../authgen.torrc', name)
+        rc, fp = getfp(args, '../authgen.torrc', name)
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
