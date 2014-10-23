@@ -405,7 +405,7 @@ def generate(args):
         #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
         torargs = "{0} -f tor.authority.torrc".format(default_tor_args)
-        addRelayToXML(root, starttime, torargs, None, None, name, download=1048576, upload=1048576)
+        addRelayToXML(root, starttime, torargs, None, None, name, download=12800, upload=12800)
 
         # generate keys for tor
         os.makedirs(name)
