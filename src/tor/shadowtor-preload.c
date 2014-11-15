@@ -146,16 +146,20 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
     g_assert(g_module_symbol(handle, "mark_logs_temp", (gpointer*)&(worker->tor.mark_logs_temp)));
 	g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "mark_logs_temp", (gpointer*)&(worker->shadowtor.mark_logs_temp)));
 
-    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->tor.crypto_global_init)));
-	g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
-    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->tor.tor_ssl_global_init)));
-//    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_init", (gpointer*)&(worker->shadowtor.crypto_global_init)));
-//    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->shadowtor.crypto_global_cleanup)));
-
     /* this one does not exist in older Tors, so don't assert success */
     g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->tor.crypto_early_init));
+    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_early_init", (gpointer*)&(worker->shadowtor.crypto_early_init)));
 
-	/* libevent */
+    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->tor.crypto_global_init)));
+    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_init", (gpointer*)&(worker->shadowtor.crypto_global_init)));
+
+    g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
+    g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "crypto_global_cleanup", (gpointer*)&(worker->shadowtor.crypto_global_cleanup)));
+
+    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->tor.tor_ssl_global_init)));
+
+
+    /* libevent */
 
 //	g_assert(g_module_symbol(handle, "event_base_loopexit", (gpointer*)&(worker->tor.event_base_loopexit)));
     g_assert(g_module_symbol(handle, SHADOWTOR_PREFIX "event_base_loopexit", (gpointer*)&(worker->shadowtor.event_base_loopexit)));
@@ -366,6 +370,8 @@ const void* RAND_SSLeay() {
 typedef struct _PreloadGlobal PreloadGlobal;
 struct _PreloadGlobal {
     gboolean initialized;
+    gboolean sslInitializedEarly;
+    gboolean sslInitializedGlobal;
     gint nTorCryptoNodes;
     gint nThreads;
     gint numCryptoThreadLocks;
@@ -385,8 +391,16 @@ int crypto_early_init() {
     G_LOCK(shadowtorpreloadSecondaryLock);
     gint result = 0;
 
-    if(_shadowtorpreload_getWorker()->tor.crypto_early_init != NULL) {
-        result = _shadowtorpreload_getWorker()->tor.crypto_early_init();
+    if(!shadowtorpreloadGlobalState.sslInitializedEarly) {
+        shadowtorpreloadGlobalState.sslInitializedEarly = TRUE;
+        if(_shadowtorpreload_getWorker()->tor.crypto_early_init != NULL) {
+            result = _shadowtorpreload_getWorker()->tor.crypto_early_init();
+        }
+    } else {
+        if(_shadowtorpreload_getWorker()->tor.crypto_early_init != NULL &&
+           _shadowtorpreload_getWorker()->shadowtor.crypto_early_init != NULL) {
+            result = _shadowtorpreload_getWorker()->shadowtor.crypto_early_init();
+        }
     }
 
 	G_UNLOCK(shadowtorpreloadSecondaryLock);
@@ -396,10 +410,17 @@ int crypto_early_init() {
 int crypto_global_init(int useAccel, const char *accelName, const char *accelDir) {
     G_LOCK(shadowtorpreloadPrimaryLock);
 
+    shadowtorpreloadGlobalState.nTorCryptoNodes++;
+
     gint result = 0;
-    if(++shadowtorpreloadGlobalState.nTorCryptoNodes == 1) {
-        _shadowtorpreload_getWorker()->tor.tor_ssl_global_init();
-        result = _shadowtorpreload_getWorker()->tor.crypto_global_init(useAccel, accelName, accelDir);
+    if(!shadowtorpreloadGlobalState.sslInitializedGlobal) {
+        shadowtorpreloadGlobalState.sslInitializedGlobal = TRUE;
+        if(_shadowtorpreload_getWorker()->tor.tor_ssl_global_init) {
+            _shadowtorpreload_getWorker()->tor.tor_ssl_global_init();
+        }
+        if(_shadowtorpreload_getWorker()->tor.crypto_global_init) {
+            result = _shadowtorpreload_getWorker()->tor.crypto_global_init(useAccel, accelName, accelDir);
+        }
     }
 
     G_UNLOCK(shadowtorpreloadPrimaryLock);
@@ -411,7 +432,9 @@ int crypto_global_cleanup(void) {
 
     gint result = 0;
     if(--shadowtorpreloadGlobalState.nTorCryptoNodes == 0) {
-        result = _shadowtorpreload_getWorker()->tor.crypto_global_cleanup();
+        if(_shadowtorpreload_getWorker()->tor.crypto_global_cleanup) {
+            result = _shadowtorpreload_getWorker()->tor.crypto_global_cleanup();
+        }
     }
 
     G_UNLOCK(shadowtorpreloadPrimaryLock);

@@ -93,6 +93,14 @@ int shadowtorinterpose_crypto_global_cleanup(void) {
     return 0;
 }
 
+int shadowtorinterpose_crypto_early_init() {
+    if (crypto_seed_rng(1) < 0)
+      return -1;
+    if (crypto_init_siphash_key() < 0)
+      return -1;
+    return 0;
+}
+
 
 /**
  * Crypto optimizations when running Tor in Shadow.
