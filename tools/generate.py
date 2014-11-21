@@ -1123,7 +1123,7 @@ ORPort 9111\n\
 DirPort 9112\n\
 SocksPort 0\n\
 V3BandwidthsFile data/torflowauthority/v3bw\n\
-TestingDirAuthVoteGuard {0}\n'.format(",".join(guardids)) # note - also need exit policy
+TestingDirAuthVoteGuard {0}\n'.format(",".join([g.replace(" ", "") for g in guardids])) # note - also need exit policy
     bridgeauths = \
 'AuthoritativeDirectory 1\n\
 BridgeAuthoritativeDir 1\n\
