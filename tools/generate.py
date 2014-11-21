@@ -388,7 +388,7 @@ def generate(args):
     os.symlink("v3bw.init.consensus", "torflowauthority/v3bw")
     v3bwfile.write("1\n")
     
-    guardnames = []
+    guardnames, guardfps = [], []
 
     with open("authgen.torrc", 'w') as fauthgen: print >>fauthgen, "DirServer test 127.0.0.1:5000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000\nORPort 5000\n"
     with open("authgen.pw", 'w') as fauthgenpw: print >>fauthgenpw, "shadowprivatenetwork\n"
@@ -412,6 +412,7 @@ def generate(args):
         os.makedirs(name)
         os.chdir(name)
         rc, fp = getfp(args, '../authgen.torrc', name)
+        guardfps.append(fp)
         if rc != 0: return rc
         gencert = "{0} --create-identity-key -m 24 --passphrase-fd 0".format(args.torgencertbin)
         with open("../authgen.pw", 'r') as pwin: retcode = subprocess.call(shlex.split(gencert), stdin=pwin, stdout=args.devnull, stderr=subprocess.STDOUT)
@@ -448,6 +449,7 @@ def generate(args):
             os.makedirs(name)
             os.chdir(name)
             rc, fp = getfp(args, '../bridgeauthgen.torrc', name)
+            guardfps.append(fp)
             os.chdir("..")
             if rc != 0: return rc
             v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), bridgeauthority.getBWConsensusArg(), name))
@@ -469,6 +471,7 @@ def generate(args):
         os.makedirs(name)
         os.chdir(name)
         rc, fp = getfp(args, '../authgen.torrc', name)
+        guardfps.append(fp)
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -488,6 +491,7 @@ def generate(args):
         os.makedirs(name)
         os.chdir(name)
         rc, fp = getfp(args, '../authgen.torrc', name)
+        guardfps.append(fp)
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -660,7 +664,7 @@ def generate(args):
                    
     # generate torrc files now that we know the authorities and bridges
     bridges = None
-    write_torrc_files(args, dirauths, bridgeauths, bridges, guardnames)
+    write_torrc_files(args, dirauths, bridgeauths, bridges, guardfps)
 
     # finally, print the XML file
     with open("shadow.config.xml", 'wb') as fhosts:
@@ -1061,7 +1065,7 @@ def parse_consensus(consensus_path):
     
     return validyear, validmonth, sorted(relays, key=lambda relay: relay.getBWConsensusArg())
 
-def write_torrc_files(args, dirauths, bridgeauths, bridges, guardnames):
+def write_torrc_files(args, dirauths, bridgeauths, bridges, guardids):
     auths_lines = ""
     # If we're running a bridge authority too, use
     # 'AlternateDirAuthority' together with 'AlternateBridgeAuthority'
@@ -1118,9 +1122,8 @@ V3AuthoritativeDirectory 1\n\
 ORPort 9111\n\
 DirPort 9112\n\
 SocksPort 0\n\
-V3BandwidthsFile data/torflowauthority/v3bw\n'
-# the following option needs more testing
-#TestingDirAuthVoteGuard {0}\n'.format(",".join(guardnames)) # note - also need exit policy
+V3BandwidthsFile data/torflowauthority/v3bw\n\
+TestingDirAuthVoteGuard {0}\n'.format(",".join(guardids)) # note - also need exit policy
     bridgeauths = \
 'AuthoritativeDirectory 1\n\
 BridgeAuthoritativeDir 1\n\
