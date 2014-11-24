@@ -44,11 +44,11 @@ for n in root.iterchildren("node"):
             elif 'bulkclient' in n.get("id"):
                 a.set("arguments", "tgen.torbulkclient.graphml.xml")
             elif 'perfclient50k' in n.get("id"):
-                a.set("arguments", "tgen.torperfclient50k.graphml.xml")
+                a.set("arguments", "tgen.torperf50kclient.graphml.xml")
             elif 'perfclient1m' in n.get("id"):
-                a.set("arguments", "tgen.torperfclient1m.graphml.xml")
+                a.set("arguments", "tgen.torperf1mclient.graphml.xml")
             elif 'perfclient5m' in n.get("id"):
-                a.set("arguments", "tgen.torperfclient5m.graphml.xml")
+                a.set("arguments", "tgen.torperf5mclient.graphml.xml")
             else: assert False
 
 with open(outfname, 'wb') as outf:

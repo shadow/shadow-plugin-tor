@@ -5,6 +5,7 @@ from random import choice
 from datetime import datetime
 from numpy import mean
 from lxml import etree
+from networkx import DiGraph, write_graphml
 
 # This should NOT be expanded, we'll use this directly in the XML file
 INSTALLPREFIX="~/.shadow/"
@@ -18,17 +19,13 @@ NAUTHS = 1
 NBRIDGEAUTHS = 0
 NCLIENTS = 100
 NBRIDGECLIENTS = 0
-FIM = 0.02
-FWEB = 0.89
-FBULK = 0.04
-FP2P = 0.05
 
 NSERVERS = 10
+FWEB = 0.97
+FBULK = 0.03
 NPERF50K = 0.0
 NPERF1M = 0.0
 NPERF5M = 0.0
-
-DOCHURN=False
 
 class Relay():
     def __init__(self, ip, bw, isExit=False, isGuard=False):
@@ -175,15 +172,12 @@ def main():
     ap.add_argument('--nbridges', action="store", type=int, dest="nbridges", help="number N of total bridges for the generated topology", metavar='N', default=NBRIDGES)
     ap.add_argument('--nclients', action="store", type=int, dest="nclients", help="number N of total clients for the generated topology", metavar='N', default=NCLIENTS)
     ap.add_argument('--nbridgeclients', action="store", type=int, dest="nbridgeclients", help="number N of total clients running with bridges for the generated topology", metavar='N', default=NBRIDGECLIENTS)
-    ap.add_argument('--fim', action="store", type=float, dest="fim", help="fraction F of interactive client connections", metavar='F', default=FIM)
     ap.add_argument('--fweb', action="store", type=float, dest="fweb", help="fraction F of web client connections", metavar='F', default=FWEB)
     ap.add_argument('--fbulk', action="store", type=float, dest="fbulk", help="fraction F of bulk HTTP client connections", metavar='F', default=FBULK)
-    ap.add_argument('--fp2p', action="store", type=float, dest="fp2p", help="fraction F of bulk P2P clients", metavar='F', default=FP2P)
     ap.add_argument('--nperf50k', action="store", type=float, dest="nperf50k", help="number N of 50KiB perf clients", metavar='F', default=NPERF50K)
     ap.add_argument('--nperf1m', action="store", type=float, dest="nperf1m", help="number N of 1MiB perf clients", metavar='F', default=NPERF1M)
     ap.add_argument('--nperf5m', action="store", type=float, dest="nperf5m", help="number N of 5MiB perf clients", metavar='F', default=NPERF5M)
     ap.add_argument('--nservers', action="store", type=int, dest="nservers", help="number N of fileservers", metavar='N', default=NSERVERS)
-    ap.add_argument('--dochurn', action="store_true", dest="dochurn", help="use random file selection for clients", default=DOCHURN)
     ap.add_argument('--geoippath', action="store", dest="geoippath", help="path to geoip file, needed to convert IPs to cluster codes", default=INSTALLPREFIX+"share/geoip")
 
     # positional args (required)
@@ -218,7 +212,7 @@ def main():
     args.devnull = open("/dev/null", 'wb')
     
     generate(args)
-    log("finished generating:\n{0}/relays.csv\n{0}/shadow.config.xml\n{0}/filetransfer.im.dl\n{0}/filetransfer.web.dl\n{0}/filetransfer.bulk.dl\n{0}/filetransfer.webthink.dat\n{0}/filetransfer.imthink.dat\n{0}/filetransfer.perfthink.dat".format(os.getcwd()))
+    log("finished generating {0}/shadow.config.xml".format(os.getcwd()))
 
 def getfp(args, torrc, name, datadir="."):
     """Run Tor with --list-fingerprint to get its fingerprint, read
@@ -271,7 +265,7 @@ def generate(args):
     clientCountryCodes = getClientCountryChoices(args.connectingusers)
     
     # output choices
-    with open("relays.csv", "wb") as f:
+    with open("relay.choices.csv", "wb") as f:
         print >>f, Relay.CSVHEADER
         for r in exitguards_nodes: print >>f, r.toCSV()
         for r in guards_nodes: print >>f, r.toCSV()
@@ -281,25 +275,13 @@ def generate(args):
     # build the XML
     root = etree.Element("shadow")
     
-    # servers
-    fim = open("filetransfer.im.dl", "wb") if args.fim > 0 else None
-    fweb = open("filetransfer.web.dl", "wb")
-    fbulk = open("filetransfer.bulk.dl", "wb")
-    fall = open("filetransfer.all.dl", "wb")
-    fperf50k = open("filetransfer.50kib.dl", "wb")
-    fperf1m = open("filetransfer.1mib.dl", "wb")
-    fperf5m = open("filetransfer.5mib.dl", "wb")
-    
-    # for all.dl, ratio of bulk to web files needs to be about 1/10 of the
-    # ratio of bulk to web users given as input, so the number of total BT
-    # connections throughout the sim stays at the given ratio
-    webPerBulk = int(1.0 / (args.fbulk / 10.0))
-    
+    servernames = []
     i = 0
     while i < args.nservers:
         serverip, servercode = chooseServer(servers)
         i += 1
         name = "server{0}".format(i)
+        servernames.append(name)
         e = etree.SubElement(root, "node")
         e.set("id", name)
         e.set("iphint", serverip)
@@ -310,69 +292,10 @@ def generate(args):
         e.set("quantity", "1")
         e.set("cpufrequency", "10000000") # 10 GHz b/c we dont want bottlenecks
         a = etree.SubElement(e, "application")
-        a.set("plugin", "filetransfer")
+        a.set("plugin", "tgen")
         a.set("starttime", "1")
-        a.set("arguments", "server 80 {0}share".format(INSTALLPREFIX))
-        if fim != None: print >>fim, "{0}:80:/1KiB.urnd".format(name)
-        print >>fweb, "{0}:80:/320KiB.urnd".format(name)
-        print >>fbulk, "{0}:80:/5MiB.urnd".format(name)
-        print >>fall, "{0}:80:/5MiB.urnd".format(name)
-        print >>fperf50k, "{0}:80:/50KiB.urnd".format(name)
-        print >>fperf1m, "{0}:80:/1MiB.urnd".format(name)
-        print >>fperf5m, "{0}:80:/5MiB.urnd".format(name)
-        for _ in xrange(webPerBulk): print >>fall, "{0}:80:/320KiB.urnd".format(name)
-    if fim != None: fim.close()
-    fweb.close()
-    fbulk.close()
-    fall.close()
-    fperf50k.close()
-    fperf1m.close()
-    fperf5m.close()
-    
-    # torrent auth
-    if args.fp2p > 0.0:
-        e = etree.SubElement(root, "node")
-        e.set("id", "auth.torrent")
-        e.set("bandwidthup", "102400") # in KiB
-        e.set("bandwidthdown", "102400") # in KiB
-        e.set("quantity", "1")
-        e.set("cpufrequency", "10000000") # 10 GHz b/c we dont want bottlenecks
-        a = etree.SubElement(e, "application")
-        a.set("plugin", "torrent")
-        a.set("starttime", "1")
-        a.set("arguments", "authority 5000")
-    
-    # think time file for web clients
-    maxthink = 60000.0 # milliseconds
-    step = 500
-    entries = range(1, int(maxthink)+1, step)
-    increment = 1.0 / len(entries)
-    # 1012.000 0.0062491534
-    with open("filetransfer.webthink.dat", "wb") as fthink:
-        frac = increment
-        for ms in entries:
-            assert frac <= 1.0
-            print >>fthink, "{0} {1}".format("%.3f" % ms, "%.10f" % frac)
-            frac += increment
-            
-    # think time file for im clients
-    if args.fim > 0: 
-        maxthink = 5000.0 # milliseconds
-        step = 500
-        entries = range(1, int(maxthink)+1, step)
-        increment = 1.0 / len(entries)
-        with open("filetransfer.imthink.dat", "wb") as fthink:
-            entries = range(1, int(maxthink)+1, step)
-            frac = increment
-            for ms in entries:
-                assert frac <= 1.0
-                print >>fthink, "{0} {1}".format("%.3f" % ms, "%.10f" % frac)
-                frac += increment
-
-    # think time file for perf clients
-    ms = 60000.0 # milliseconds
-    with open("filetransfer.perfthink.dat", "wb") as fthink:
-        print >>fthink, "{0} {1}".format("%.3f" % ms, "%.10f" % 1.0)
+        a.set("arguments", "tgen.server.graphml.xml")
+    write_tgen_config_files(servernames)
 
     with open("shadowresolv.conf", "wb") as f: print >>f, "nameserver 4uthority1"
 
@@ -406,7 +329,7 @@ def generate(args):
         #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
         torargs = "{0} -f tor.authority.torrc".format(default_tor_args)
-        addRelayToXML(root, starttime, torargs, None, None, name, download=12800, upload=12800)
+        addRelayToXML(root, starttime, torargs, None, None, name, download=6400, upload=6400)
 
         # generate keys for tor
         os.makedirs(name)
@@ -553,114 +476,77 @@ def generate(args):
     secondsPerClient = 600.0 / (nimclients+nbulkclients+np2pclients+nwebclients+nperf50kclients+nperf1mclients+nperf5mclients)
     clientStartTime = 900.0 # minute 15
 
-    if args.dochurn: # user chooses bulk/web download randomly
-        i = 1
-        while i <= args.nclients:
-            name = "client{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.all.dl localhost 9000 filetransfer.webthink.dat -1"
-            
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
+    # clients are separated into bulk/web downloaders who always download their file type
+    i = 1
+    while i <= 1 and False: # TODO enable when torflow works
+        name = "torflowauthority"
+        starttime = "{0}".format(int(round(clientStartTime)))
+        torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
         
-            clientStartTime += secondsPerClient
-            i += 1       
-        
-    else: # user are separated into bulk/web downloaders who always download their file type
-        i = 1
-        while i <= 1:
-            name = "torflowauthority"
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
-            
-            addRelayToXML(root, starttime, torargs, None, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
-        
-            clientStartTime += secondsPerClient
-            i += 1
+        addRelayToXML(root, starttime, torargs, None, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
+    
+        clientStartTime += secondsPerClient
+        i += 1
 
-        i = 1
-        while i <= nimclients:
-            name = "imclient{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.im.dl localhost 9000 filetransfer.imthink.dat -1"
-            
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
+    i = 1
+    while i <= nwebclients:
+        name = "webclient{0}".format(i)
+        starttime = "{0}".format(int(round(clientStartTime)))
+        torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+        tgenargs = "tgen.torwebclient.graphml.xml"
         
-            clientStartTime += secondsPerClient
-            i += 1
-                
-        i = 1
-        while i <= nwebclients:
-            name = "webclient{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.web.dl localhost 9000 filetransfer.webthink.dat -1"
-            
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+    
+        clientStartTime += secondsPerClient
+        i += 1
+    
+    i = 1
+    while i <= nbulkclients:
+        name = "bulkclient{0}".format(i)
+        starttime = "{0}".format(int(round(clientStartTime)))
+        torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
+        tgenargs = "tgen.torbulkclient.graphml.xml"
         
-            clientStartTime += secondsPerClient
-            i += 1
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+    
+        clientStartTime += secondsPerClient
+        i += 1
         
-        i = 1
-        while i <= nbulkclients:
-            name = "bulkclient{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.bulk.dl localhost 9000 none -1"
-            
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
-        
-            clientStartTime += secondsPerClient
-            i += 1
-            
-        i = 1
-        while i <= np2pclients:
-            name = "p2pclient{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
-            torrentargs = "torrent node auth.torrent 5000 localhost 9000 6000 700MB"
- 
-            addRelayToXML(root, starttime, torargs, None, torrentargs, name, code=choice(clientCountryCodes))
-        
-            clientStartTime += secondsPerClient
-            i += 1
+    i = 1
+    while i <= nperf50kclients:
+        name = "perf50kclient{0}".format(i)
+        starttime = "{0}".format(int(round(clientStartTime)))
+        torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
+        tgenargs = "tgen.torperf50kclient.graphml.xml"
 
-        i = 1
-        while i <= nperf50kclients:
-            name = "perfclient50k{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.50kib.dl localhost 9000 filetransfer.perfthink.dat -1"
- 
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
-        
-            clientStartTime += secondsPerClient
-            i += 1
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+    
+        clientStartTime += secondsPerClient
+        i += 1
 
-        i = 1
-        while i <= nperf1mclients:
-            name = "perfclient1m{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.1mib.dl localhost 9000 filetransfer.perfthink.dat -1"
- 
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
-        
-            clientStartTime += secondsPerClient
-            i += 1
+    i = 1
+    while i <= nperf1mclients:
+        name = "perf1mclient{0}".format(i)
+        starttime = "{0}".format(int(round(clientStartTime)))
+        torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
+        tgenargs = "tgen.torperf1mclient.graphml.xml"
 
-        i = 1
-        while i <= nperf5mclients:
-            name = "perfclient5m{0}".format(i)
-            starttime = "{0}".format(int(round(clientStartTime)))
-            torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
-            fileargs = "client multi filetransfer.5mib.dl localhost 9000 filetransfer.perfthink.dat -1"
- 
-            addRelayToXML(root, starttime, torargs, fileargs, None, name, code=choice(clientCountryCodes))
-        
-            clientStartTime += secondsPerClient
-            i += 1
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+    
+        clientStartTime += secondsPerClient
+        i += 1
+
+    i = 1
+    while i <= nperf5mclients:
+        name = "perf5mclient{0}".format(i)
+        starttime = "{0}".format(int(round(clientStartTime)))
+        torargs = "{0} -f tor.torperf.torrc".format(default_tor_args) # in bytes
+        tgenargs = "tgen.torperf5mclient.graphml.xml"
+
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+    
+        clientStartTime += secondsPerClient
+        i += 1
                    
     # generate torrc files now that we know the authorities and bridges
     bridges = None
@@ -671,20 +557,15 @@ def generate(args):
         # plug-ins
         
         e = etree.Element("plugin")
-        e.set("id", "filetransfer")
-        e.set("path", "{0}plugins/libshadow-plugin-filetransfer.so".format(INSTALLPREFIX))
+        e.set("id", "tgen")
+        e.set("path", "{0}plugins/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
         root.insert(0, e)
         
-        if np2pclients > 0:
-            e = etree.Element("plugin")
-            e.set("id", "torrent")
-            e.set("path", "{0}plugins/libshadow-plugin-torrent.so".format(INSTALLPREFIX))
-            root.insert(0, e)
-
-        e = etree.Element("plugin")
-        e.set("id", "torflow")
-        e.set("path", "{0}plugins/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
-        root.insert(0, e)
+        # TODO enable when torflow works
+        #e = etree.Element("plugin")
+        #e.set("id", "torflow")
+        #e.set("path", "{0}plugins/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
+        #root.insert(0, e)
 
         e = etree.Element("plugin")
         e.set("id", "torctl")
@@ -709,7 +590,7 @@ def generate(args):
         # all our hosts
         print >>fhosts, (etree.tostring(root, pretty_print=True, xml_declaration=False))
 
-def addRelayToXML(root, starttime, torargs, fileargs, torrentargs, name, download=0, upload=0, ip=None, code=None, torflowworkers=1): # bandwidth in KiB
+def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0, ip=None, code=None, torflowworkers=1): # bandwidth in KiB
     # node
     e = etree.SubElement(root, "node")
     e.set("id", name)
@@ -774,16 +655,11 @@ def addRelayToXML(root, starttime, torargs, fileargs, torrentargs, name, downloa
             a.set("plugin", "torctl")
             a.set("starttime", "{0}".format(int(starttime)+1))
             a.set("arguments", "localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY")
-    if fileargs is not None:
+    if tgenargs is not None:
         a = etree.SubElement(e, "application")
-        a.set("plugin", "filetransfer")
+        a.set("plugin", "tgen")
         a.set("starttime", "{0}".format(int(starttime)+300))
-        a.set("arguments", fileargs)
-    if torrentargs is not None:
-        a = etree.SubElement(e, "application")
-        a.set("plugin", "torrent")
-        a.set("starttime", "{0}".format(int(starttime)+300))
-        a.set("arguments", torrentargs)
+        a.set("arguments", tgenargs)
 
 def getClientCountryChoices(connectinguserspath):
     lines = None
@@ -1152,6 +1028,60 @@ SocksPort 0\n' # note - also need exit policy
         with open("tor.bridgeclient.torrc", 'wb') as f: print >>f, clients + bridgeclients
     with open("tor.torperf.torrc", 'wb') as f: print >>f, clients + maxdirty + noguards
     log("finished generating torrc files")
+
+def write_tgen_config_files(servernames):
+    servers = []
+    for n in servernames: servers.append("{0}:80".format(n))
+    s = ','.join(servers)
+
+    generate_tgen_server()
+    generate_tgen_filetransfer_clients(servers=s)
+    generate_tgen_perf_clients(servers=s, size="50 KiB", name="tgen.torperf50kclient.graphml.xml")
+    generate_tgen_perf_clients(servers=s, size="1 MiB", name="tgen.torperf1mclient.graphml.xml")
+    generate_tgen_perf_clients(servers=s, size="5 MiB", name="tgen.torperf5mclient.graphml.xml")
+
+def generate_tgen_server():
+    G = DiGraph()
+    G.add_node("start", serverport="80")
+    write_graphml(G, "tgen.server.graphml.xml")
+
+def generate_tgen_filetransfer_clients(servers):
+    # webclients
+    G = DiGraph()
+
+    G.add_node("start", socksproxy="localhost:9000", serverport="8888", peers=servers)
+    G.add_node("transfer", type="get", protocol="tcp", size="320 KiB")
+    G.add_node("pause", time="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60")
+
+    G.add_edge("start", "transfer")
+    G.add_edge("transfer", "pause")
+    G.add_edge("pause", "start")
+
+    write_graphml(G, "tgen.torwebclient.graphml.xml")
+
+    # bulkclients
+    G = DiGraph()
+
+    G.add_node("start", socksproxy="localhost:9000", serverport="8888", peers=servers)
+    G.add_node("transfer", type="get", protocol="tcp", size="5 MiB")
+
+    G.add_edge("start", "transfer")
+    G.add_edge("transfer", "start")
+
+    write_graphml(G, "tgen.torbulkclient.graphml.xml")
+
+def generate_tgen_perf_clients(servers="server1:8888,server2:8888", size="50 KiB", name="tgen.perf50kclient.graphml.xml"):
+    G = DiGraph()
+
+    G.add_node("start", socksproxy="localhost:9000", serverport="8888", peers=servers)
+    G.add_node("transfer", type="get", protocol="tcp", size=size)
+    G.add_node("pause", time="60")
+
+    G.add_edge("start", "transfer")
+    G.add_edge("transfer", "pause")
+    G.add_edge("pause", "start")
+
+    write_graphml(G, name)
 
 ## helper - test if program is in path
 def which(program):
