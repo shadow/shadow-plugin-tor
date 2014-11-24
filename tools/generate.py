@@ -329,7 +329,7 @@ def generate(args):
         #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
         torargs = "{0} -f tor.authority.torrc".format(default_tor_args)
-        addRelayToXML(root, starttime, torargs, None, None, name, download=6400, upload=6400)
+        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400)
 
         # generate keys for tor
         os.makedirs(name)
@@ -366,7 +366,7 @@ def generate(args):
             auth.append(None)
             bridgeauthority = guards_nodes.pop()
             torargs = "{0} -f tor.bridgeauthority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, bridgeauthority.getBWRateArg(), bridgeauthority.getBWBurstArg()) # in bytes
-            addRelayToXML(root, starttime, torargs, None, None, name, bridgeauthority.download, bridgeauthority.upload, bridgeauthority.ip, bridgeauthority.code)
+            addRelayToXML(root, starttime, torargs, None, name, bridgeauthority.download, bridgeauthority.upload, bridgeauthority.ip, bridgeauthority.code)
 
             # generate certificate in order to get the fingerprint
             os.makedirs(name)
@@ -400,7 +400,7 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.exitguard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
+        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
@@ -420,7 +420,7 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.guard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
+        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
@@ -438,7 +438,7 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.exit.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
+        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
     
@@ -456,7 +456,7 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f tor.middle.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, None, name, r.download, r.upload, r.ip, r.code)
+        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
@@ -465,13 +465,13 @@ def generate(args):
 
     # clients
     nbulkclients = int(args.fbulk * args.nclients)
-    nwebclients = int(args.nclients - nimclients - nbulkclients - np2pclients)
+    nwebclients = int(args.nclients - nbulkclients)
     nperf50kclients = int(args.nperf50k)
     nperf1mclients = int(args.nperf1m)
     nperf5mclients = int(args.nperf5m)
         
     # boot clients equally spread out between 15 and 25 minutes
-    secondsPerClient = 600.0 / (nimclients+nbulkclients+np2pclients+nwebclients+nperf50kclients+nperf1mclients+nperf5mclients)
+    secondsPerClient = 600.0 / (nbulkclients+nwebclients+nperf50kclients+nperf1mclients+nperf5mclients)
     clientStartTime = 900.0 # minute 15
 
     # clients are separated into bulk/web downloaders who always download their file type
@@ -481,7 +481,7 @@ def generate(args):
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f tor.client.torrc".format(default_tor_args) # in bytes
         
-        addRelayToXML(root, starttime, torargs, None, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
+        addRelayToXML(root, starttime, torargs, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
     
         clientStartTime += secondsPerClient
         i += 1
