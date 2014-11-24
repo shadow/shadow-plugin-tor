@@ -190,7 +190,7 @@ def main():
     # get arguments, accessible with args.value
     args = ap.parse_args()
     
-    totalclientf = args.fim + args.fweb + args.fbulk + args.fp2p
+    totalclientf = args.fweb + args.fbulk
     if totalclientf != 1.0:
         log("client fractions do not add to 1.0! please fix arguments...")
         return
@@ -464,9 +464,7 @@ def generate(args):
     os.chdir("..") # move out of initdata dir
 
     # clients
-    nimclients = int(args.fim * args.nclients)
     nbulkclients = int(args.fbulk * args.nclients)
-    np2pclients = int(args.fp2p * args.nclients)
     nwebclients = int(args.nclients - nimclients - nbulkclients - np2pclients)
     nperf50kclients = int(args.nperf50k)
     nperf1mclients = int(args.nperf1m)
