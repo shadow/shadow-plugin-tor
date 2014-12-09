@@ -9,10 +9,10 @@
 #include "shadowtor.h"
 
 int shadowtorinterpose_event_base_loopexit(struct event_base * base, const struct timeval * t) {
-    ScallionTor* stor = scalliontor_getPointer();
+    ScallionTor* stor = shadowtor_getPointer();
     g_assert(stor);
 
-    scalliontor_loopexit(stor);
+    shadowtor_loopexit(stor);
     return 0;
 }
 
@@ -61,7 +61,7 @@ void shadowtorinterpose_tor_gettimeofday(struct timeval *timeval) {
 
 int shadowtorinterpose_spawn_func(void (*func)(void *), void *data)
 {
-    ScallionTor* stor = scalliontor_getPointer();
+    ScallionTor* stor = shadowtor_getPointer();
     g_assert(stor);
 
     /* this takes the place of forking a cpuworker and running cpuworker_main.
@@ -70,14 +70,14 @@ int shadowtorinterpose_spawn_func(void (*func)(void *), void *data)
     int *fdarray = data;
     int fd = fdarray[1]; /* this side is ours */
 
-    scalliontor_newCPUWorker(stor, fd);
+    shadowtor_newCPUWorker(stor, fd);
 
     /* now we should be ready to receive events in vtor_cpuworker_readable */
     return 0;
 }
 
 void shadowtorinterpose_mark_logs_temp(void) {
-    scalliontor_setLogging();
+    shadowtor_setLogging();
 }
 
 

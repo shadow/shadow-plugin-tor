@@ -6,30 +6,30 @@
 
 #include "shadowtor.h"
 
-void scalliontor_free(ScallionTor* stor) {
+void shadowtor_free(ScallionTor* stor) {
 	tor_cleanup();
 	g_free(stor);
 }
 
-static void _scalliontor_secondCallback(ScallionTor* stor) {
-	scalliontor_notify(stor);
+static void _shadowtor_secondCallback(ScallionTor* stor) {
+	shadowtor_notify(stor);
 
 	/* call Tor's second elapsed function */
 	second_elapsed_callback(NULL, NULL);
 
 	/* make sure we handle any event creations that happened in Tor */
-	scalliontor_notify(stor);
+	shadowtor_notify(stor);
 
 	/* schedule the next callback */
 	if(stor) {
-		stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)_scalliontor_secondCallback,
+		stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)_shadowtor_secondCallback,
 				stor, 1000);
 	}
 }
 
 #ifdef SCALLION_DOREFILLCALLBACKS
-static void _scalliontor_refillCallback(ScallionTor* stor) {
-	scalliontor_notify(stor);
+static void _shadowtor_refillCallback(ScallionTor* stor) {
+	shadowtor_notify(stor);
 
 	/* call Tor's refill function */
 	refill_callback(NULL, NULL);
@@ -38,21 +38,21 @@ static void _scalliontor_refillCallback(ScallionTor* stor) {
         control_event_stream_bandwidth_used();
 
 	/* make sure we handle any event creations that happened in Tor */
-	scalliontor_notify(stor);
+	shadowtor_notify(stor);
 
 	/* schedule the next callback */
 	if(stor) {
-		stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)_scalliontor_refillCallback,
+		stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)_shadowtor_refillCallback,
 				stor, stor->refillmsecs);
 	}
 }
 #endif
 
-ScallionTor* scalliontor_getPointer() {
-	return scallion.stor;
+ScallionTor* shadowtor_getPointer() {
+	return shadowtor.stor;
 }
 
-static void scalliontor_logmsg_cb(int severity, uint32_t domain, const char *msg) {
+static void shadowtor_logmsg_cb(int severity, uint32_t domain, const char *msg) {
 	ShadowLogLevel level;
 	switch (severity) {
 		case LOG_DEBUG:
@@ -75,20 +75,20 @@ static void scalliontor_logmsg_cb(int severity, uint32_t domain, const char *msg
 		break;
 	}
 	gchar* msg_dup = g_strdup(msg);
-	scalliontor_getPointer()->shadowlibFuncs->log(level, __FUNCTION__, "%s", g_strchomp(msg_dup));
+	shadowtor_getPointer()->shadowlibFuncs->log(level, __FUNCTION__, "%s", g_strchomp(msg_dup));
 	g_free(msg_dup);
 }
 
-void scalliontor_setLogging() {
+void shadowtor_setLogging() {
 	/* setup a callback so we can log into shadow */
     log_severity_list_t *severity = g_new0(log_severity_list_t, 1);
     /* we'll log everything according to Shadow's filter */
     set_log_severity_config(LOG_DEBUG, LOG_ERR, severity);
-    add_callback_log(severity, scalliontor_logmsg_cb);
+    add_callback_log(severity, shadowtor_logmsg_cb);
     g_free(severity);
 }
 
-gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
+gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	time_t now = time(NULL);
 
 	update_approx_time(now);
@@ -96,11 +96,11 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	init_logging();
 
 	/* tor_init() loses our logging, so set it before AND after */
-	scalliontor_setLogging();
+	shadowtor_setLogging();
 	if (tor_init(argc, argv) < 0) {
 		return -1;
 	}
-//	scalliontor_setLogging();
+//	shadowtor_setLogging();
 
 	  /* load the private keys, if we're supposed to have them, and set up the
 	   * TLS context. */
@@ -157,7 +157,7 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	*/
 	directory_info_has_arrived(now, 1);
 
-	/* !note that scallion intercepts the cpuworker functionality (rob) */
+	/* !note that we intercept the cpuworker functionality (rob) */
 	if (server_mode(get_options())) {
 		/* launch cpuworkers. Need to do this *after* we've read the onion key. */
 		cpu_init();
@@ -175,7 +175,7 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 //										  NULL);
 //		tor_assert(second_timer);
 
-		_scalliontor_secondCallback(stor);
+		_shadowtor_secondCallback(stor);
 	}
 
 
@@ -194,18 +194,18 @@ gint scalliontor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 //                                      NULL);
 //    tor_assert(refill_timer);
     stor->refillmsecs = msecs;
-	_scalliontor_refillCallback(stor);
+	_shadowtor_refillCallback(stor);
   }
 #endif
 #endif
 
     /* run the startup events */
-    scalliontor_notify(stor);
+    shadowtor_notify(stor);
 
 	return 0;
 }
 
-static gchar* _scalliontor_getFormatedArg(gchar* argString, const gchar* home, const gchar* hostname) {
+static gchar* _shadowtor_getFormatedArg(gchar* argString, const gchar* home, const gchar* hostname) {
 	gchar* found = NULL;
 	GString* sbuffer = g_string_new(argString);
 
@@ -226,7 +226,7 @@ static gchar* _scalliontor_getFormatedArg(gchar* argString, const gchar* home, c
 	return g_string_free(sbuffer, FALSE);
 }
 
-ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
+ScallionTor* shadowtor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
 		gint torargc, gchar* torargv[]) {
 	ScallionTor* stor = g_new0(ScallionTor, 1);
 	stor->shadowlibFuncs = shadowlibFuncs;
@@ -239,12 +239,12 @@ ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostnam
 	/* create the new strings */
 	const gchar* homeDirectory = g_get_home_dir();
 	for(gint i = 0; i < torargc; i++) {
-		formattedArgs[i+1] = _scalliontor_getFormatedArg(torargv[i], homeDirectory, hostname);
+		formattedArgs[i+1] = _shadowtor_getFormatedArg(torargv[i], homeDirectory, hostname);
 	}
 
 	/* initialize tor */
-	scallion.stor = stor;
-	scalliontor_start(stor, torargc+1, formattedArgs);
+	shadowtor.stor = stor;
+	shadowtor_start(stor, torargc+1, formattedArgs);
 
 	/* free the new strings */
 	for(gint i = 0; i < torargc+1; i++) {
@@ -254,7 +254,7 @@ ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostnam
 	return stor;
 }
 
-void scalliontor_notify(ScallionTor* stor) {
+void shadowtor_notify(ScallionTor* stor) {
 	update_approx_time(time(NULL));
 
 	/* tell libevent to check epoll and activate the ready sockets without blocking */
@@ -268,13 +268,13 @@ void scalliontor_notify(ScallionTor* stor) {
  *
  * we hijack and use the libevent loop in nonblock mode, so when tor calls
  * the loopexit, we basically just need to do the linked connection activation.
- * that is extracted to scalliontor_loopexitCallback, which we need to execute
+ * that is extracted to shadowtor_loopexitCallback, which we need to execute
  * as a callback so we don't invoke event_base_loop while it is currently being
  * executed. */
-static void scalliontor_loopexitCallback(ScallionTor* stor) {
+static void shadowtor_loopexitCallback(ScallionTor* stor) {
 	update_approx_time(time(NULL));
 
-	scalliontor_notify(stor);
+	shadowtor_notify(stor);
 
 	while(1) {
 		/* All active linked conns should get their read events activated. */
@@ -292,14 +292,14 @@ static void scalliontor_loopexitCallback(ScallionTor* stor) {
 	}
 
 	/* make sure we handle any new events caused by the linked conns */
-	scalliontor_notify(stor);
+	shadowtor_notify(stor);
 }
-void scalliontor_loopexit(ScallionTor* stor) {
-	stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)scalliontor_loopexitCallback, (gpointer)stor, 1);
+void shadowtor_loopexit(ScallionTor* stor) {
+	stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)shadowtor_loopexitCallback, (gpointer)stor, 1);
 }
 
 /* return -1 to kill, 0 for EAGAIN, bytes read/written for success */
-static int scalliontor_checkIOResult(int fd, int ioResult) {
+static int shadowtor_checkIOResult(int fd, int ioResult) {
 	if(ioResult < 0) {
 		if(errno == EAGAIN) {
 			/* dont block! and dont fail! */
@@ -324,7 +324,7 @@ static int scalliontor_checkIOResult(int fd, int ioResult) {
 }
 
 #ifdef SCALLION_USEV2CPUWORKER
-void scalliontor_readCPUWorkerCallback(int sockd, short ev_types, void * arg) {
+void shadowtor_readCPUWorkerCallback(int sockd, short ev_types, void * arg) {
 	vtor_cpuworker_tp cpuw = arg;
 
 enter:
@@ -346,7 +346,7 @@ enter:
 			int ioResult = recv(cpuw->fd, recvbuf, bytes_needed, 0);
 //			int ioResult = recv(cpuw->fd, (&(cpuw->req))+cpuw->offset, bytesNeeded-cpuw->offset, 0);
 
-			ioResult = scalliontor_checkIOResult(cpuw->fd, ioResult);
+			ioResult = shadowtor_checkIOResult(cpuw->fd, ioResult);
 			if(ioResult < 0) goto end; // error, kill ourself
 			else if(ioResult == 0) goto ret; // EAGAIN
 			else g_assert(ioResult > 0); // yay
@@ -478,7 +478,7 @@ enter:
 
 			int ioResult = send(cpuw->fd, rpl_r_loc, bytes_needed, 0);
 
-			ioResult = scalliontor_checkIOResult(cpuw->fd, ioResult);
+			ioResult = shadowtor_checkIOResult(cpuw->fd, ioResult);
 			if(ioResult < 0) goto end; // error, kill ourself
 			else if(ioResult == 0) goto ret; // EAGAIN
 			else g_assert(ioResult > 0); // yay
@@ -528,7 +528,7 @@ end:
 	}
 }
 #else
-void scalliontor_readCPUWorkerCallback(int sockd, short ev_types, void * arg) {
+void shadowtor_readCPUWorkerCallback(int sockd, short ev_types, void * arg) {
 	/* adapted from cpuworker_main.
 	 *
 	 * these are blocking calls in Tor. we need to cope, so the approach we
@@ -557,7 +557,7 @@ enter:
 			/* get the type of question */
 			ioResult = recv(cpuw->fd, &(cpuw->question_type), 1, 0);
 
-			action = scalliontor_checkIOResult(cpuw, ioResult);
+			action = shadowtor_checkIOResult(cpuw, ioResult);
 			if(action == -1) goto kill;
 			else if(action == 0) goto exit;
 
@@ -576,7 +576,7 @@ enter:
 			while(action > 0 && cpuw->offset < bytesNeeded) {
 				ioResult = recv(cpuw->fd, cpuw->tag+cpuw->offset, bytesNeeded-cpuw->offset, 0);
 
-				action = scalliontor_checkIOResult(cpuw, ioResult);
+				action = shadowtor_checkIOResult(cpuw, ioResult);
 				if(action == -1) goto kill;
 				else if(action == 0) goto exit;
 
@@ -603,7 +603,7 @@ enter:
 			while(action > 0 && cpuw->offset < bytesNeeded) {
 				ioResult = recv(cpuw->fd, cpuw->question+cpuw->offset, bytesNeeded-cpuw->offset, 0);
 
-				action = scalliontor_checkIOResult(cpuw, ioResult);
+				action = shadowtor_checkIOResult(cpuw, ioResult);
 				if(action == -1) goto kill;
 				else if(action == 0) goto exit;
 
@@ -663,7 +663,7 @@ enter:
 			while(action > 0 && cpuw->offset < bytesNeeded) {
 				ioResult = send(cpuw->fd, cpuw->buf+cpuw->offset, bytesNeeded-cpuw->offset, 0);
 
-				action = scalliontor_checkIOResult(cpuw, ioResult);
+				action = shadowtor_checkIOResult(cpuw, ioResult);
 				if(action == -1) goto kill;
 				else if(action == 0) goto exit;
 
@@ -706,7 +706,7 @@ kill:
 }
 #endif
 
-void scalliontor_newCPUWorker(ScallionTor* stor, int fd) {
+void shadowtor_newCPUWorker(ScallionTor* stor, int fd) {
 	g_assert(stor);
 	if(stor->cpuw) {
 		g_free(stor->cpuw);
@@ -727,6 +727,6 @@ void scalliontor_newCPUWorker(ScallionTor* stor, int fd) {
 #endif
 
 	/* setup event so we will get a callback */
-	event_assign(&(cpuw->read_event), tor_libevent_get_base(), cpuw->fd, EV_READ|EV_PERSIST, scalliontor_readCPUWorkerCallback, cpuw);
+	event_assign(&(cpuw->read_event), tor_libevent_get_base(), cpuw->fd, EV_READ|EV_PERSIST, shadowtor_readCPUWorkerCallback, cpuw);
 	event_add(&(cpuw->read_event), NULL);
 }

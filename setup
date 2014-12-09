@@ -122,7 +122,7 @@ def main():
         default=TOR_DEFAULT_VERSION)
 
     parser_build.add_argument('--tor-lib', 
-        help="append LIB to the list of libraries that get linked with Tor and scallion. Useful when compiling and linking custom libraries.",
+        help="append LIB to the list of libraries that get linked with shadow-plugin-tor. Useful when compiling and linking custom libraries.",
         metavar="LIB",
         action="append", dest="tor_libraries",
         default=[])
