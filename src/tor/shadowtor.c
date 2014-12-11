@@ -6,11 +6,6 @@
 
 #include "shadowtor.h"
 
-void shadowtor_free(ScallionTor* stor) {
-	tor_cleanup();
-	g_free(stor);
-}
-
 static void _shadowtor_secondCallback(ScallionTor* stor) {
 	shadowtor_notify(stor);
 
@@ -518,13 +513,7 @@ ret:
 
 end:
 	if (cpuw != NULL) {
-		memwipe(&cpuw->req, 0, sizeof(cpuw->req));
-		memwipe(&cpuw->rpl, 0, sizeof(cpuw->rpl));
-		release_server_onion_keys(&cpuw->onion_keys);
-		tor_close_socket(cpuw->fd);
-		event_del(&(cpuw->read_event));
-		memset(cpuw, 0, sizeof(vtor_cpuworker_t));
-		free(cpuw);
+	    cpuw->state = CPUW_DEAD;
 	}
 }
 #else
@@ -695,24 +684,63 @@ exit:
 
 kill:
 	if(cpuw != NULL) {
-		if (cpuw->onion_key)
-			crypto_pk_free(cpuw->onion_key);
-		if (cpuw->last_onion_key)
-			crypto_pk_free(cpuw->last_onion_key);
-		tor_close_socket(cpuw->fd);
-		event_del(&(cpuw->read_event));
-		free(cpuw);
+		cpuw->state = CPUW_DEAD;
 	}
 }
 #endif
 
+static void _shadowtor_freeCPUWorker(vtor_cpuworker_tp cpuw) {
+    if(!cpuw) return;
+
+#ifdef SCALLION_USEV2CPUWORKER
+    memwipe(&cpuw->req, 0, sizeof(cpuw->req));
+    memwipe(&cpuw->rpl, 0, sizeof(cpuw->rpl));
+    release_server_onion_keys(&cpuw->onion_keys);
+    tor_close_socket(cpuw->fd);
+    event_del(&(cpuw->read_event));
+    memset(cpuw, 0, sizeof(vtor_cpuworker_t));
+    free(cpuw);
+#else
+    if (cpuw->onion_key)
+        crypto_pk_free(cpuw->onion_key);
+    if (cpuw->last_onion_key)
+        crypto_pk_free(cpuw->last_onion_key);
+    tor_close_socket(cpuw->fd);
+    event_del(&(cpuw->read_event));
+    free(cpuw);
+#endif
+}
+
+void shadowtor_free(ScallionTor* stor) {
+    tor_cleanup();
+    if(stor->cpuWorkers != NULL) {
+        g_slist_free_full(stor->cpuWorkers, (GDestroyNotify)_shadowtor_freeCPUWorker);
+    }
+    g_free(stor);
+}
+
+static void _shadowtor_freeDeadCPUWorkers(ScallionTor* stor) {
+	/* check for dead workers and free them */
+	GSList* next = stor->cpuWorkers;
+	while(next != NULL) {
+	    vtor_cpuworker_tp cpuw = (vtor_cpuworker_tp)next->data;
+
+	    /* free the worker */
+	    if(cpuw != NULL && cpuw->state == CPUW_DEAD) {
+	        stor->cpuWorkers = g_slist_delete_link(stor->cpuWorkers, next);
+	        _shadowtor_freeCPUWorker(cpuw);
+	    }
+
+	    next = g_slist_next(next);
+	}
+}
+
 void shadowtor_newCPUWorker(ScallionTor* stor, int fd) {
 	g_assert(stor);
-	if(stor->cpuw) {
-		g_free(stor->cpuw);
-	}
+	_shadowtor_freeDeadCPUWorkers(stor);
 
 	vtor_cpuworker_tp cpuw = calloc(1, sizeof(vtor_cpuworker_t));
+	g_slist_append(stor->cpuWorkers, cpuw);
 
 	cpuw->fd = fd;
 	cpuw->state = CPUW_NONE;

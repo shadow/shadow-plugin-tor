@@ -122,6 +122,7 @@ enum cpuwstate {
 	CPUW_NONE,
 	CPUW_READTYPE, CPUW_READTAG, CPUW_READCHALLENGE, CPUW_PROCESS, CPUW_WRITERESPONSE,
 	CPUW_V2_READ, CPUW_V2_PROCESS, CPUW_V2_WRITE, CPUW_V2_RESET,
+	CPUW_DEAD,
 };
 
 /** The tag specifies which circuit this onionskin was from. */
@@ -254,7 +255,7 @@ typedef struct vtor_logfile_s {
 typedef struct _ScallionTor ScallionTor;
 struct _ScallionTor {
 	int refillmsecs;
-	vtor_cpuworker_tp cpuw;
+	GSList* cpuWorkers;
 	ShadowFunctionTable* shadowlibFuncs;
 };
 
