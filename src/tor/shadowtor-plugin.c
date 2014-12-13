@@ -12,11 +12,11 @@
 
 /* my global structure to hold all variable, node-specific application state.
  * the name must not collide with other loaded modules globals. */
-Scallion scallion;
+ShadowTor shadowtor;
 /* needed because we dont link tor_main.c */
 const char tor_git_revision[] = "";
 
-static in_addr_t _scallion_HostnameCallback(const gchar* hostname) {
+static in_addr_t _shadowtorplugin_HostnameCallback(const gchar* hostname) {
 	in_addr_t addr = 0;
 
 	/* get the address in network order */
@@ -30,7 +30,7 @@ static in_addr_t _scallion_HostnameCallback(const gchar* hostname) {
 		if(result != -1 && info != NULL) {
 			addr = ((struct sockaddr_in*)(info->ai_addr))->sin_addr.s_addr;
 		} else {
-			scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, "unable to create client: error in getaddrinfo");
+			shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, "unable to create client: error in getaddrinfo");
 		}
 		freeaddrinfo(info);
 	}
@@ -38,35 +38,35 @@ static in_addr_t _scallion_HostnameCallback(const gchar* hostname) {
 	return addr;
 }
 
-static void _scallion_new(gint argc, gchar* argv[]) {
-	scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "scallion_new called");
+static void _shadowtorplugin_new(gint argc, gchar* argv[]) {
+	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "shadowtorplugin_new called");
 
 	gchar* usage = "USAGE: (\"please provide a torrc file or configs in the same format as tor command line options\n";
 	if(argc == 1) {
-		scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, usage);
+		shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, usage);
 		return;
 	}
 	
 	/* get the hostname, IP, and IP string */
-	if(gethostname(scallion.hostname, 128) < 0) {
-		scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "error getting hostname");
+	if(gethostname(shadowtor.hostname, 128) < 0) {
+		shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "error getting hostname");
 		return;
 	}
-	scallion.ip = _scallion_HostnameCallback(scallion.hostname);
-	inet_ntop(AF_INET, &scallion.ip, scallion.ipstring, sizeof(scallion.ipstring));
+	shadowtor.ip = _shadowtorplugin_HostnameCallback(shadowtor.hostname);
+	inet_ntop(AF_INET, &shadowtor.ip, shadowtor.ipstring, sizeof(shadowtor.ipstring));
 
 	/* pass arguments to tor, program name is argv[0] */
-	scallion.stor = scalliontor_new(scallion.shadowlibFuncs, scallion.hostname, argc-1, &argv[1]);
+	shadowtor.stor = shadowtor_new(shadowtor.shadowlibFuncs, shadowtor.hostname, argc-1, &argv[1]);
 }
 
-static void _scallion_free() {
-	scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "scallion_free called");
-	scalliontor_free(scallion.stor);
+static void _shadowtorplugin_free() {
+	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "shadowtorplugin_free called");
+	shadowtor_free(shadowtor.stor);
 }
 
-static void _scallion_notify() {
-	scallion.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "_scallion_notify called");
-	scalliontor_notify(scallion.stor);
+static void _shadowtorplugin_notify() {
+	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "_shadowtorplugin_notify called");
+	shadowtor_notify(shadowtor.stor);
 }
 
 typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
@@ -78,7 +78,7 @@ typedef unsigned long (*CRYPTO_id_func)(void);
  * return NULL for success, or a string describing the error */
 const gchar* g_module_check_init(GModule *module) {
 	/* clear our memory before initializing */
-	memset(&scallion, 0, sizeof(Scallion));
+	memset(&shadowtor, 0, sizeof(ShadowTor));
 
     /* handle multi-threading support*/
 
@@ -102,20 +102,20 @@ const gchar* g_module_check_init(GModule *module) {
     CRYPTO_set_id_callback(shadowtor_idFunc);
     RAND_set_rand_method(shadowtor_randomMethod);
 
-    scallion.opensslThreadSupport = 1;
+    shadowtor.opensslThreadSupport = 1;
 #else
     /* no thread support */
-    scallion.opensslThreadSupport = 0;
+    shadowtor.opensslThreadSupport = 0;
 #endif
 
     /* setup libevent locks */
 #ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
-    scallion.libeventThreadSupport = 1;
+    shadowtor.libeventThreadSupport = 1;
     if(evthread_use_pthreads()) {
-        scallion.libeventHasError = 1;
+        shadowtor.libeventHasError = 1;
     }
 #else
-    scallion.libeventThreadSupport = 0;
+    shadowtor.libeventThreadSupport = 0;
 #endif
 
 	return NULL;
@@ -124,27 +124,27 @@ const gchar* g_module_check_init(GModule *module) {
 /* called after g_module_check_init(), after shadow searches for __shadow_plugin_init__ */
 void __shadow_plugin_init__(ShadowFunctionTable* shadowlibFuncs) {
 	/* save the shadow functions we will use */
-	scallion.shadowlibFuncs = shadowlibFuncs;
+	shadowtor.shadowlibFuncs = shadowlibFuncs;
 
 	/* tell shadow which functions it should call to manage nodes */
-	shadowlibFuncs->registerPlugin(&_scallion_new, &_scallion_free, &_scallion_notify);
+	shadowlibFuncs->registerPlugin(&_shadowtorplugin_new, &_shadowtorplugin_free, &_shadowtorplugin_notify);
 
 	/* log a message through Shadow's logging system */
-	shadowlibFuncs->log(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "finished registering scallion plug-in state");
+	shadowlibFuncs->log(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "finished registering shadowtor plug-in state");
 
 	/* print results of library initialization */
-	if(scallion.opensslThreadSupport) {
+	if(shadowtor.opensslThreadSupport) {
 	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "initialized openssl with thread support");
 	} else {
 	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "please rebuild openssl with threading support. expect segfaults.");
 	}
 
-	if(scallion.libeventThreadSupport) {
+	if(shadowtor.libeventThreadSupport) {
 	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "initialized libevent with thread support using evthread_use_pthreads()");
 	} else {
 	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "please rebuild libevent with threading support, or link with event_pthread. expect segfaults.");
 	}
-	if(scallion.libeventHasError) {
+	if(shadowtor.libeventHasError) {
 	    shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "there was an error in evthread_use_pthreads()");
 	}
 }
@@ -153,7 +153,7 @@ void __shadow_plugin_init__(ShadowFunctionTable* shadowlibFuncs) {
  * once for each worker thread.
  */
 void g_module_unload(GModule *module) {
-	/* _scallion_cleanupOpenSSL should only be called once globally */
+	/* _shadowtorplugin_cleanupOpenSSL should only be called once globally */
     shadowtorpreload_clear();
-	memset(&scallion, 0, sizeof(Scallion));
+	memset(&shadowtor, 0, sizeof(ShadowTor));
 }

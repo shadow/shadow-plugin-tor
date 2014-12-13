@@ -11,9 +11,9 @@ def main():
 
     generate_tgen_server()
     generate_tgen_filetransfer_clients(servers=s)
-    generate_tgen_perf_clients(servers=s, size="50 KiB", name="tgen.torperfclient50k.graphml.xml")
-    generate_tgen_perf_clients(servers=s, size="1 MiB", name="tgen.torperfclient1m.graphml.xml")
-    generate_tgen_perf_clients(servers=s, size="5 MiB", name="tgen.torperfclient5m.graphml.xml")
+    generate_tgen_perf_clients(servers=s, size="50 KiB", name="tgen.torperf50kclient.graphml.xml")
+    generate_tgen_perf_clients(servers=s, size="1 MiB", name="tgen.torperf1mclient.graphml.xml")
+    generate_tgen_perf_clients(servers=s, size="5 MiB", name="tgen.torperf5mclient.graphml.xml")
 
 def generate_tgen_server():
     G = nx.DiGraph()
@@ -45,7 +45,7 @@ def generate_tgen_filetransfer_clients(servers):
 
     nx.write_graphml(G, "tgen.torbulkclient.graphml.xml")
 
-def generate_tgen_perf_clients(servers="server1:8888,server2:8888", size="50 KiB", name="tgen.perfclient50k.graphml.xml"):
+def generate_tgen_perf_clients(servers="server1:8888,server2:8888", size="50 KiB", name="tgen.perf50kclient.graphml.xml"):
     G = nx.DiGraph()
 
     G.add_node("start", socksproxy="localhost:9000", serverport="8888", peers=servers)

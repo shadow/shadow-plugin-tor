@@ -153,7 +153,7 @@ add_library(shadow-preload-tor SHARED shadowtor-preload.c)
 target_link_libraries(shadow-preload-tor ${GLIB_LIBRARIES} ${DL_LIBRARIES})
 install(TARGETS shadow-preload-tor DESTINATION lib)
 
-## install scallion script
+## install run script
 install(PROGRAMS shadow-tor DESTINATION bin)
 
 install(FILES ${TOR_ROOT_DIR}/src/config/geoip DESTINATION share/)

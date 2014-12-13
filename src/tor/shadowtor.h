@@ -122,6 +122,7 @@ enum cpuwstate {
 	CPUW_NONE,
 	CPUW_READTYPE, CPUW_READTAG, CPUW_READCHALLENGE, CPUW_PROCESS, CPUW_WRITERESPONSE,
 	CPUW_V2_READ, CPUW_V2_PROCESS, CPUW_V2_WRITE, CPUW_V2_RESET,
+	CPUW_DEAD,
 };
 
 /** The tag specifies which circuit this onionskin was from. */
@@ -254,12 +255,12 @@ typedef struct vtor_logfile_s {
 typedef struct _ScallionTor ScallionTor;
 struct _ScallionTor {
 	int refillmsecs;
-	vtor_cpuworker_tp cpuw;
+	GSList* cpuWorkers;
 	ShadowFunctionTable* shadowlibFuncs;
 };
 
-typedef struct _Scallion Scallion;
-struct _Scallion {
+typedef struct _ShadowTor ShadowTor;
+struct _ShadowTor {
 	in_addr_t ip;
 	gchar ipstring[40];
 	gchar hostname[128];
@@ -270,19 +271,19 @@ struct _Scallion {
     gboolean libeventHasError;
 };
 
-extern Scallion scallion;
+extern ShadowTor shadowtor;
 #undef log
 
 typedef void (*GlobalCleanupFunc())();
 
-ScallionTor* scalliontor_getPointer();
+ScallionTor* shadowtor_getPointer();
 
 void shadowtorpreload_init(GModule* handle, gint nLocks);
 void shadowtorpreload_clear();
 
-ScallionTor* scalliontor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
+ScallionTor* shadowtor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
 		gint torargc, gchar* torargv[]);
-void scalliontor_notify(ScallionTor* stor);
-void scalliontor_free(ScallionTor* stor);
+void shadowtor_notify(ScallionTor* stor);
+void shadowtor_free(ScallionTor* stor);
 
 #endif /* SCALLION_H_ */
