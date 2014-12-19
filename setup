@@ -423,7 +423,7 @@ def setup_tor(args):
             if len(args.tor_libraries) > 0:
                 for l in args.tor_libraries: libs += " -l" + l.strip()
 
-            configure = "./configure --disable-transparent --disable-asciidoc --disable-threads --disable-gcc-hardening --disable-linker-hardening --disable-unittests CFLAGS=\"{0}\" LDFLAGS=\"{1}\" LIBS=\"{2}\"".format(cflags, ldflags, libs)
+            configure = "./configure --disable-transparent --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests CFLAGS=\"{0}\" LDFLAGS=\"{1}\" LIBS=\"{2}\"".format(cflags, ldflags, libs)
 
             if args.libevent_prefix is not None: configure += " --with-libevent-dir=" + getfullpath(args.libevent_prefix)
             if args.openssl_prefix is not None: configure += " --with-openssl-dir=" + getfullpath(args.openssl_prefix)
