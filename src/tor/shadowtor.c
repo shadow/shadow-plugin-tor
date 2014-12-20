@@ -88,7 +88,11 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 
 	update_approx_time(now);
 	tor_threads_init();
+#ifdef STARTUP_Q_PARAM
+	init_logging(0);
+#else
 	init_logging();
+#endif
 
 	/* tor_init() loses our logging, so set it before AND after */
 	shadowtor_setLogging();

@@ -19,6 +19,8 @@ include_directories(${TOR_ROOT_DIR}/src)
 include_directories(${TOR_ROOT_DIR}/src/common)
 include_directories(${TOR_ROOT_DIR}/src/or)
 include_directories(${TOR_ROOT_DIR}/src/ext)
+include_directories(${TOR_ROOT_DIR}/src/ext/trunnel)
+include_directories(${TOR_ROOT_DIR}/src/trunnel)
 
 include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INCLUDES} ${EVENT2_INCLUDES} ${OPENSSL_INCLUDES} ${TOR_INCLUDES})
 
@@ -84,6 +86,12 @@ if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} E
     add_definitions(-DSCALLION_MEMPOOLOPT)
     message(STATUS "Added definition SCALLION_MEMPOOLOPT")
 endif()
+# version >= 0.2.6.1, commit 39d4e67be8283b2a7141a7aa8342d30e27f47e6f
+if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 6 AND ${TOR_VERSION_D} GREATER 0) OR
+    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 6))
+    add_definitions(-DSTARTUP_Q_PARAM)
+    message(STATUS "Added definition STARTUP_Q_PARAM")
+endif()
 
 ## get tor source files, but ignore some of them
 aux_source_directory(${TOR_ROOT_DIR}/src/common torcommon_sources)
@@ -110,11 +118,13 @@ else()
         ${TOR_ROOT_DIR}/src/ext/curve25519_donna/curve25519-donna-c64.c
     )
 endif()
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel torexttrunnel_sources)
 aux_source_directory(${TOR_ROOT_DIR}/src/or toror_sources)
 list(REMOVE_ITEM toror_sources 
     ${TOR_ROOT_DIR}/src/or/ntmain.c
     ${TOR_ROOT_DIR}/src/or/tor_main.c
 )
+aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 
 ## get tor header files -- we dont need this for now
 #file(GLOB tor_headers ${TOR_ROOT_DIR}/*.h)
@@ -134,7 +144,7 @@ add_cflags("-w")
 
 ## create and install a shared library that can plug into shadow
 add_bitcode(shadow-plugin-tor-bitcode 
-    shadowtor-plugin.c shadowtor-interpose.c shadowtor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources})
+    shadowtor-plugin.c shadowtor-interpose.c shadowtor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources} ${tortrunnel_sources} ${torexttrunnel_sources})
 add_plugin(shadow-plugin-tor shadow-plugin-tor-bitcode)
 
 target_link_libraries(shadow-plugin-tor
