@@ -100,6 +100,7 @@ extern int trusted_dirs_reload_certs(void);
 extern int router_reload_router_list(void);
 extern void directory_info_has_arrived(time_t now, int from_cache);
 extern int tor_init(int argc, char *argv[]);
+extern int sockmgr_thread_loop_once(int64_t* pause_time_out);
 
 extern int n_sockets_open;
 extern int global_write_bucket;

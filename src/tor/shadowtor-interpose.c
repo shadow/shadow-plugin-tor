@@ -59,21 +59,30 @@ void shadowtorinterpose_tor_gettimeofday(struct timeval *timeval) {
     timeval->tv_usec = tp.tv_nsec/1000;
 }
 
+extern void cpuworker_main(void *data);
+extern void sockmgr_thread_main(void *data);
+
 int shadowtorinterpose_spawn_func(void (*func)(void *), void *data)
 {
     ScallionTor* stor = shadowtor_getPointer();
     g_assert(stor);
 
-    /* this takes the place of forking a cpuworker and running cpuworker_main.
-     * func points to cpuworker_main, but we'll implement a version that
-     * works in shadow */
-    int *fdarray = data;
-    int fd = fdarray[1]; /* this side is ours */
+    if(func == cpuworker_main) {
+        /* this takes the place of forking a cpuworker and running cpuworker_main.
+         * func points to cpuworker_main, but we'll implement a version that
+         * works in shadow */
+        int *fdarray = data;
+        int fd = fdarray[1]; /* this side is ours */
 
-    shadowtor_newCPUWorker(stor, fd);
+        shadowtor_newCPUWorker(stor, fd);
 
-    /* now we should be ready to receive events in vtor_cpuworker_readable */
-    return 0;
+        /* now we should be ready to receive events in vtor_cpuworker_readable */
+        return 0;
+    } else if(func == sockmgr_thread_main) {
+        shadowtor_newSockMgrWorker(stor);
+        return 0;
+    }
+    return -1;
 }
 
 void shadowtorinterpose_mark_logs_temp(void) {

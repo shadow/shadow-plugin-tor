@@ -42,6 +42,17 @@ sed -i${bext} 's/tor_socketpair(AF_UNIX, SOCK_STREAM,/tor_socketpair(AF_UNIX, SO
 sed -i '/#ifndef TOR_IS_MULTITHREADED/ { N;N;N;/\n.*#endif/ {s/#ifndef.*#endif//}}' src/or/cpuworker.c
 sed -i 's/set_socket_nonblocking(fd);//' src/or/cpuworker.c
 
+# single line static function declaration
+sed -i 's/static void cpuworker_main/void cpuworker_main/' src/or/cpuworker.c
+# multi-line static function definition
+sed -i ':a;N;$!ba;s/static void\ncpuworker_main/void\ncpuworker_main/g' src/or/cpuworker.c
+
+echo "Patching or/kist.c"
+# multi-line static function definition
+sed -i ':a;N;$!ba;s/static void\nsockmgr_thread_main/void\nsockmgr_thread_main/g' src/or/kist.c
+# multi-line static function definition
+sed -i ':a;N;$!ba;s/static int\nsockmgr_thread_loop_once/int\nsockmgr_thread_loop_once/g' src/or/kist.c
+
 echo "Patching or/main.c"
 # multi-line static function definition
 sed -i${bext} ':a;N;$!ba;s/static void\nsecond_elapsed_callback/void\nsecond_elapsed_callback/' src/or/main.c

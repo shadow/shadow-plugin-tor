@@ -88,18 +88,17 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 
 	update_approx_time(now);
 	tor_threads_init();
+
 #ifdef STARTUP_Q_PARAM
 	init_logging(0);
 #else
 	init_logging();
+	shadowtor_setLogging();
 #endif
 
-	/* tor_init() loses our logging, so set it before AND after */
-	shadowtor_setLogging();
 	if (tor_init(argc, argv) < 0) {
 		return -1;
 	}
-//	shadowtor_setLogging();
 
 	  /* load the private keys, if we're supposed to have them, and set up the
 	   * TLS context. */
@@ -761,4 +760,21 @@ void shadowtor_newCPUWorker(ScallionTor* stor, int fd) {
 	/* setup event so we will get a callback */
 	event_assign(&(cpuw->read_event), tor_libevent_get_base(), cpuw->fd, EV_READ|EV_PERSIST, shadowtor_readCPUWorkerCallback, cpuw);
 	event_add(&(cpuw->read_event), NULL);
+
+	log_notice(LD_GENERAL, "cpuworker launched!");
+}
+
+static void shadowtor_runSockMgrWorker(ScallionTor* stor) {
+    int64_t pausetime = 0;
+    int keep_running = sockmgr_thread_loop_once(&pausetime);
+    if(keep_running) {
+        stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)shadowtor_runSockMgrWorker,
+                        stor, pausetime);
+    }
+}
+
+void shadowtor_newSockMgrWorker(ScallionTor* stor) {
+    g_assert(stor);
+    log_notice(LD_GENERAL, "sockmgr launched!");
+    shadowtor_runSockMgrWorker(stor);
 }
