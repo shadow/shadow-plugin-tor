@@ -83,6 +83,17 @@ void shadowtor_setLogging() {
     g_free(severity);
 }
 
+int shadowtor_openSocket(int domain, int type, int protocol) {
+    int s = socket(domain, type | SOCK_NONBLOCK, protocol);
+    if (s >= 0) {
+      socket_accounting_lock();
+      ++n_sockets_open;
+      // mark_socket_open(s);
+      socket_accounting_unlock();
+    }
+    return s;
+}
+
 gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	time_t now = time(NULL);
 
@@ -292,7 +303,9 @@ static void shadowtor_loopexitCallback(ScallionTor* stor) {
 	/* make sure we handle any new events caused by the linked conns */
 	shadowtor_notify(stor);
 }
-void shadowtor_loopexit(ScallionTor* stor) {
+void shadowtor_loopexit() {
+    ScallionTor* stor = shadowtor_getPointer();
+    g_assert(stor);
 	stor->shadowlibFuncs->createCallback((ShadowPluginCallbackFunc)shadowtor_loopexitCallback, (gpointer)stor, 1);
 }
 
@@ -738,8 +751,10 @@ static void _shadowtor_freeDeadCPUWorkers(ScallionTor* stor) {
 	}
 }
 
-void shadowtor_newCPUWorker(ScallionTor* stor, int fd) {
+void shadowtor_newCPUWorker(int fd) {
+    ScallionTor* stor = shadowtor_getPointer();
 	g_assert(stor);
+
 	_shadowtor_freeDeadCPUWorkers(stor);
 
 	vtor_cpuworker_tp cpuw = calloc(1, sizeof(vtor_cpuworker_t));
@@ -773,7 +788,8 @@ static void shadowtor_runSockMgrWorker(ScallionTor* stor) {
     }
 }
 
-void shadowtor_newSockMgrWorker(ScallionTor* stor) {
+void shadowtor_newSockMgrWorker() {
+    ScallionTor* stor = shadowtor_getPointer();
     g_assert(stor);
     log_notice(LD_GENERAL, "sockmgr launched!");
     shadowtor_runSockMgrWorker(stor);

@@ -144,7 +144,7 @@ add_cflags("-w")
 
 ## create and install a shared library that can plug into shadow
 add_bitcode(shadow-plugin-tor-bitcode 
-    shadowtor-plugin.c shadowtor-interpose.c shadowtor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources} ${tortrunnel_sources} ${torexttrunnel_sources})
+    shadowtor-plugin.c shadowtor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources} ${tortrunnel_sources} ${torexttrunnel_sources})
 add_plugin(shadow-plugin-tor shadow-plugin-tor-bitcode)
 
 target_link_libraries(shadow-plugin-tor
