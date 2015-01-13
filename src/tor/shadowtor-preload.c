@@ -29,6 +29,7 @@ typedef int (*crypto_seed_rng_fp)(int);
 typedef int (*crypto_init_siphash_key_fp)(void);
 typedef void (*tor_ssl_global_init_fp)(void);
 typedef void (*mark_logs_temp_fp)(void);
+typedef int (*write_str_to_file_fp)(const char *, const char *, int);
 typedef void (*cpuworker_main_fp)(void*);
 typedef void (*sockmgr_thread_main_fp)(void*);
 
@@ -39,6 +40,7 @@ typedef void (*shadowtor_newCPUWorker_fp)(int);
 typedef int (*shadowtor_openSocket_fp)(int, int, int);
 typedef void (*shadowtor_setLogging_fp)();
 typedef void (*shadowtor_loopexit_fp)();
+typedef void (*shadowtor_trackConsensusUpdate_fp)(const char*, const char*);
 
 typedef struct _TorInterposeFuncs TorInterposeFuncs;
 struct _TorInterposeFuncs {
@@ -53,6 +55,7 @@ struct _TorInterposeFuncs {
 
 	tor_ssl_global_init_fp tor_ssl_global_init;
 	mark_logs_temp_fp mark_logs_temp;
+	write_str_to_file_fp write_str_to_file;
 	cpuworker_main_fp cpuworker_main;
 	sockmgr_thread_main_fp sockmgr_thread_main;
 };
@@ -64,6 +67,7 @@ struct _ShadowTorInterposeFuncs {
     shadowtor_openSocket_fp shadowtor_openSocket;
     shadowtor_setLogging_fp shadowtor_setLogging;
     shadowtor_loopexit_fp shadowtor_loopexit;
+    shadowtor_trackConsensusUpdate_fp shadowtor_trackConsensusUpdate;
 };
 
 typedef struct _PreloadWorker PreloadWorker;
@@ -119,6 +123,7 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
     g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
     g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->tor.tor_ssl_global_init)));
     g_assert(g_module_symbol(handle, "cpuworker_main", (gpointer*)&(worker->tor.cpuworker_main)));
+    g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(worker->tor.write_str_to_file)));
 
     /* these do not exist in all Tors, so don't assert success */
     g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->tor.crypto_early_init));
@@ -132,6 +137,7 @@ void shadowtorpreload_init(GModule* handle, gint nLocks) {
     g_assert(g_module_symbol(handle, "shadowtor_openSocket", (gpointer*)&(worker->shadowtor.shadowtor_openSocket)));
     g_assert(g_module_symbol(handle, "shadowtor_setLogging", (gpointer*)&(worker->shadowtor.shadowtor_setLogging)));
     g_assert(g_module_symbol(handle, "shadowtor_loopexit", (gpointer*)&(worker->shadowtor.shadowtor_loopexit)));
+    g_assert(g_module_symbol(handle, "shadowtor_trackConsensusUpdate", (gpointer*)&(worker->shadowtor.shadowtor_trackConsensusUpdate)));
 
     /* now initialize our locking facilities, ensuring that this is only done once */
     _shadowtorpreload_cryptoSetup(nLocks);
@@ -184,6 +190,10 @@ void mark_logs_temp(void) {
     _shadowtorpreload_getWorker()->shadowtor.shadowtor_setLogging();
 }
 
+int write_str_to_file(const char *fname, const char *str, int bin) {
+    _shadowtorpreload_getWorker()->shadowtor.shadowtor_trackConsensusUpdate(fname, str);
+    return _shadowtorpreload_getWorker()->tor.write_str_to_file(fname, str, bin);
+}
 
 /* libevent family */
 

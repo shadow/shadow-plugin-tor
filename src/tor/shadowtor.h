@@ -265,6 +265,7 @@ struct _ShadowTor {
 	in_addr_t ip;
 	gchar ipstring[40];
 	gchar hostname[128];
+	guint consensusCounter;
 	ScallionTor* stor;
 	ShadowFunctionTable* shadowlibFuncs;
 	gboolean opensslThreadSupport;
