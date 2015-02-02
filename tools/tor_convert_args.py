@@ -19,7 +19,7 @@ root = tree.getroot()
 
 for n in root.iterchildren("node"):
     for a in n.iterchildren("application"):
-        if 'tor' in a.get("plugin"):
+        if 'tor' in a.get("plugin") or 'scallion' in a.get("plugin"):
             args = a.get('arguments').strip().split()
             assert 'client' in args[0] or 'dirauth' in args[0] or 'relay' in args[0] or 'exitrelay' in args[0]
             a.set('arguments', ' '.join(args[2:]))
