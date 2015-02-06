@@ -90,7 +90,7 @@ void shadowtor_trackConsensusUpdate(const char* filepath, const char* contents) 
     //if(g_strrstr(filepath, "cached-consensus") != NULL) {
         GString* newPath = g_string_new(filepath);
         GError* error = NULL;
-        g_string_append_printf(newPath, ".%i", shadowtor.consensusCounter++);
+        g_string_append_printf(newPath, ".%03i", shadowtor.consensusCounter++);
         if(!g_file_set_contents(newPath->str, contents, -1, &error)) {
             log_warn(LD_GENERAL,"Error writing file '%s' to track consensus update: error %i: %s",
                     newPath->str, error->code, error->message);
