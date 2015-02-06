@@ -440,10 +440,19 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 
 		while((bytes = recv(tfb->internal->controld, recvbuf, 10000, 0)) > 0) {
 			recvbuf[bytes] = '\0';
+			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id,
+					"recvbuf:%s",
+					recvbuf);
 
 			gboolean isLastLineIncomplete = FALSE;
 			if(bytes < 2 || recvbuf[bytes-2] != '\r' || recvbuf[bytes-1] != '\n') {
 				isLastLineIncomplete = TRUE;
+			}
+
+			//Check for corner case where first element is \r\n
+			gboolean isStartCRLF = FALSE;
+			if(recvbuf[0] == '\r' && recvbuf[1] == '\n') {
+				isStartCRLF = TRUE;
 			}
 
 			gchar** lines = g_strsplit(recvbuf, "\r\n", 0);
@@ -451,12 +460,15 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 			for(gint i = 0; (line = lines[i]) != NULL; i++) {
 				if(!tfb->internal->receiveLineBuffer) {
 					tfb->internal->receiveLineBuffer = g_string_new(line);
+				} else if (isStartCRLF && i == 0 && 
+						!g_ascii_strcasecmp(line, "")) {
+					/* do nothing; we want to process the line in buffer already */
 				} else {
 					g_string_append_printf(tfb->internal->receiveLineBuffer, "%s", line);
 				}
 
-				if(!g_ascii_strcasecmp(line, "") ||
-						(isLastLineIncomplete && lines[i+1] == NULL)) {
+				if(!(isStartCRLF && i == 0) && (!g_ascii_strcasecmp(line, "") ||
+						(isLastLineIncomplete && lines[i+1] == NULL))) {
 					/* this is '', or the last line, and its not all here yet */
 					continue;
 				} else {
