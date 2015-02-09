@@ -378,10 +378,10 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 	gint i = 0;
 	while (currentNode && i < sliceSize) {
 		TorFlowRelay* current = currentNode->data;
-		if (current->measureCount > 0) {
+		if (current && current->measureCount > 0) {
 			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "Current[0]: Bytes %i Total %i",
-						GPOINTER_TO_INT(current->bytesPushed->data),
-						GPOINTER_TO_INT(current->t_total->data));
+			        current->bytesPushed ? GPOINTER_TO_INT(current->bytesPushed->data) : 0,
+			        current->t_total ? GPOINTER_TO_INT(current->t_total->data) : 0);
 			gint meanBW = torflowutil_meanBandwidth(current);
 /*
 			fprintf(fp, "node_id=%s nick=%s strm_bw=%i filt_bw=%i desc_bw=%i ns_bw=%i\n",
@@ -394,14 +394,14 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 */
 			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
 						"node_id=%s nick=%s strm_bw=%i filt_bw=%i desc_bw=%i ns_bw=%i\n",
-						current->identity->str,
-						current->nickname->str,
+						current->identity ? current->identity->str : "unknown",
+						current->nickname ? current->nickname->str : "unknown",
 						meanBW,
 						torflowutil_filteredBandwidth(current, meanBW),
 						current->advertisedBandwidth,
 						current->descriptorBandwidth);
 		} else {
-			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "%s: unmeasured", current->nickname->str);
+			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "%s: unmeasured", current && current->nickname ? current->nickname->str : "unknown");
 		}
 		i++;
 		currentNode = g_slist_next(currentNode);
