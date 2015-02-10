@@ -590,7 +590,8 @@ void torflowbase_free(TorFlowBase* tfb) {
 	}
 
 	if(tfb->internal->relays) {
-		g_slist_free_full(tfb->internal->relays, g_free);
+	  //FIXME causing double free
+	  //g_slist_free_full(tfb->internal->relays, g_free);
 	}
 
 	g_free(tfb->internal);
@@ -616,7 +617,8 @@ void torflowbase_requestInfo(TorFlowBase* tfb) {
 	g_assert(tfb);
 
 	if (tfb->internal->relays) {
-		g_slist_free_full(tfb->internal->relays, g_free);
+	  //FIXME causing double free
+	  //g_slist_free_full(tfb->internal->relays, g_free);
 	}
 	tfb->internal->relays = NULL;
 	tfb->internal->tempRelay = NULL;
