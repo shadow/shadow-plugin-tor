@@ -95,7 +95,7 @@ static void _torflowbase_processLineSync(TorFlowBase* tfb, GString* linebuf) {
 	} else if (tfb->internal->gettingDescriptors && g_strstr_len(linebuf->str, linebuf->len, " OK")) {
 		tfb->internal->gettingDescriptors = FALSE;
 		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-				"got %i descriptors and %i measureable relays",
+				"got %i descriptors and %i measurable relays",
 				tfb->internal->numDescriptors,
 				tfb->internal->numRelays);
 		if(tfb->internal->eventHandlers.onDescriptorsReceived) {
@@ -679,7 +679,7 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 		currentNode = g_slist_next(currentNode);
 		i++; 
 	}
-
+	int all = unmeasured+measured+partial;
 	if (!numExits) {
 		tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id, "No exits in slice %i - skipping slice", currSlice);
 		return NULL;
@@ -688,10 +688,10 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 		return NULL;	
 	} else if (MEASUREMENTS_PER_SLICE == 1) {
 		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i",
-				currSlice, measured, unmeasured+measured);
+				currSlice, measured, all);
 	} else {
-		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i (%i partially measured)%",
-				currSlice, measured, unmeasured+partial+measured, partial);
+		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i (%i partially measured)",
+				currSlice, measured, all, partial);
 	}
 
 	//choose uniformly from all entries and exits with the lowest measure count.
