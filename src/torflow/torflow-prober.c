@@ -150,7 +150,7 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 	gdouble maxPct = ((gdouble)tfp->internal->workerID+1.0)/tfp->internal->numWorkers;
 	tfp->internal->minSlice = (gint)(numSlices * minPct);
 	tfp->internal->maxSlice = (gint)(numSlices * maxPct);
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
+	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
 			"Measuring slices %d through %d", tfp->internal->minSlice, tfp->internal->maxSlice-1);
 	tfp->internal->currSlice =  tfp->internal->minSlice - 1;
 
@@ -163,8 +163,11 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 
 	// Report an odd corner case where all slices are bad
 	if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
-		tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tfp->_tf._base.id,
-			"No measureable slices for TorFlow!");
+		tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
+			"No measurable slices for this worker!");
+		tfp->_tf._base.scbf((BootstrapCompleteFunc)_torflowprober_onBootstrapComplete,
+			tfp, 1000*WORKER_RETRY_TIME);
+		
 	}
 }
 

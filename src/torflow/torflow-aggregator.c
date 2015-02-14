@@ -264,7 +264,7 @@ void _torflowaggregator_readInitialAdvertisements(TorFlowAggregator* tfa) {
 	for(gint i = 0; i < tfa->numSlices; i++) {
 		tfa->seenSlice[i] = FALSE;
 	}
-	tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "Expecting %d slices", tfa->numSlices);
+	tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "Expecting at least %d slices", tfa->numSlices);
 
 	tfa->loadedInitial = TRUE;
 }

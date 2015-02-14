@@ -6,6 +6,7 @@
 #define TORFLOW_H_
 
 #define MEASUREMENTS_PER_SLICE 5
+#define WORKER_RETRY_TIME 300
 
 #include <stdlib.h>
 #include <stdio.h>
