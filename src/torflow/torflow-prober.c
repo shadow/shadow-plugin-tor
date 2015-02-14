@@ -76,7 +76,9 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 	g_assert(tfp);
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
 			"Probe Complete, Building Next Circuit");
-	torflowbase_closeCircuit((TorFlowBase*)tfp, tfp->internal->measurementCircID);
+	if (tfp->internal->measurementCircID) {
+		torflowbase_closeCircuit((TorFlowBase*)tfp, tfp->internal->measurementCircID);
+	}
 	tfp->internal->measurementCircID = 0;
 	tfp->internal->measurementStreamID = 0;
 
@@ -236,7 +238,7 @@ static void _torflowprober_onFileDownloadComplete(TorFlowProber* tfp, gint conte
 	g_assert(tfp);
 
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-			"probe-complete path=%s bytes=%i time-to: rtt=%zu payload=%zu total=%zu",
+			"Probe complete. path=%s bytes=%i time-to: rtt=%zu payload=%zu total=%zu",
 			torflowbase_getCurrentPath((TorFlowBase*) tfp),
 			contentLength, roundTripTime, payloadTime, totalTime);
 

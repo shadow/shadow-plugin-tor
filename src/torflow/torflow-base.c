@@ -27,6 +27,8 @@ struct _TorFlowBaseInternal {
 	gchar* cachedCircPath;
 	gboolean isStatusEventSet;
 
+	gint numDescriptors;
+	
 	/* info about relays */
 	GSList* relays;
 	gint numRelays;
@@ -92,8 +94,10 @@ static void _torflowbase_processLineSync(TorFlowBase* tfb, GString* linebuf) {
 		tfb->internal->gettingDescriptors = TRUE;
 	} else if (tfb->internal->gettingDescriptors && g_strstr_len(linebuf->str, linebuf->len, " OK")) {
 		tfb->internal->gettingDescriptors = FALSE;
-		tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-				"got %i descriptors", tfb->internal->numRelays);
+		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+				"got %i descriptors and %i measureable relays",
+				tfb->internal->numDescriptors,
+				tfb->internal->numRelays);
 		if(tfb->internal->eventHandlers.onDescriptorsReceived) {
 			tfb->internal->eventHandlers.onDescriptorsReceived(tfb, tfb->internal->relays);
 		}
@@ -130,6 +134,23 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 				}
 			}
 		} else if(g_strstr_len(parts[3], 6, "CLOSED")) {
+		} else if(g_strstr_len(parts[3], 6, "FAILED")) {
+			if(circid == tfb->internal->cachedCircId) {
+				if(g_strstr_len(parts[7], 14, "REASON=TIMEOUT")) {
+					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+							"measurement circuit '%i' has timed out", circid);
+				} else {
+					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+							"measurement circuit '%i' has failed for some reason", circid);
+				}
+
+				tfb->internal->waitingMeasurementCircuit = FALSE;
+
+				if(tfb->internal->eventHandlers.onFileServerTimeout) {
+					tfb->internal->eventHandlers.onFileServerTimeout(tfb);
+					isConsumed = TRUE;
+				}
+			}
 		}
 
 		g_strfreev(parts);
@@ -198,6 +219,7 @@ static void _torflowbase_processDescriptorLine(TorFlowBase* tfb, GString* linebu
 			g_strfreev(parts);
 			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id,
 					"now getting descriptor for relay %s", tfb->internal->tempRelay->nickname->str);
+			tfb->internal->numDescriptors++;
 			tfb->internal->tempRelay->measureCount = 0;
 			tfb->internal->tempRelay->t_rtt = NULL;
 			tfb->internal->tempRelay->t_payload = NULL;
@@ -349,7 +371,7 @@ void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currS
 	fprintf(fp, "slicenum=%i\n", currSlice);
 	fprintf(fp, "%li\n", now_ts.tv_sec);
 */
-	tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i measurements:", currSlice);
+	tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i complete. Measurements:", currSlice);
 
 	// loop through measurements and print data
 	GSList* currentNode = g_slist_nth(tfb->internal->relays, sliceSize * currSlice);
@@ -540,6 +562,7 @@ void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
 	tfb->internal->epolld = epolld;
 	tfb->internal->tempRelay = NULL;
 	tfb->internal->relays = NULL;
+	tfb->internal->numDescriptors = 0;
 	tfb->internal->numRelays = 0;
 	tfb->internal->rand = g_rand_new();
 }
@@ -599,6 +622,7 @@ void torflowbase_requestInfo(TorFlowBase* tfb) {
 	tfb->internal->tempRelay = NULL;
 	tfb->internal->entryRelay = NULL;
 	tfb->internal->exitRelay = NULL;
+	tfb->internal->numDescriptors = 0;
 	tfb->internal->numRelays = 0;
 	GString* command = g_string_new(NULL);
 	//g_string_printf(command, "GETINFO dir/status-vote/current/consensus\r\n");
@@ -616,6 +640,10 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 	gint numExits = 0; //number of exits whose count is this minimum
 	gint entryMinCounted = G_MAXINT; //minimum number of counts for any one entry
 	gint numEntries = 0; //number of entries whose count is this minimum
+
+	gint unmeasured = 0; //unmeasured relays
+	gint partial = 0; //partially measured relays
+	gint measured = 0; //fully measured relays
 
 	/* Make a pass to count the number of entries/exits with the lowest
 	 * measurement count, then select one of those at random from each
@@ -639,6 +667,15 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 				numEntries = 1;
 			}
 		}
+		//counting for the sake of logging progress
+		if (current->measureCount == 0) {
+			unmeasured++;
+		} else if (current->measureCount >= MEASUREMENTS_PER_SLICE) {
+			measured++;
+		} else {
+			partial++;
+		}
+
 		currentNode = g_slist_next(currentNode);
 		i++; 
 	}
@@ -649,6 +686,12 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 	} else if (!numEntries) {
 		tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id, "No entries in slice %i - skipping slice", currSlice);
 		return NULL;	
+	} else if (MEASUREMENTS_PER_SLICE == 1) {
+		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i",
+				currSlice, measured, unmeasured+measured);
+	} else {
+		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i (%i partially measured)%",
+				currSlice, measured, unmeasured+partial+measured, partial);
 	}
 
 	//choose uniformly from all entries and exits with the lowest measure count.
@@ -738,6 +781,8 @@ void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize r
 	tfb->internal->exitRelay->t_total = g_slist_prepend(tfb->internal->exitRelay->t_total, GINT_TO_POINTER(totalTime));
 	tfb->internal->exitRelay->bytesPushed = g_slist_prepend(tfb->internal->exitRelay->bytesPushed, GINT_TO_POINTER(contentLength));
 	tfb->internal->exitRelay->measureCount++;
+
+	for 
 }
 
 void torflowbase_updateRelays(TorFlowBase* tfb, GSList* relays) {
@@ -750,9 +795,13 @@ void torflowbase_recordTimeout(TorFlowBase* tfb) {
 	g_assert(tfb);
 
 	/* This is a buggy behavior deliberately carried over from TorFlow, where failed circuits are
-	 * counted as a "successful measurement" but have no bearing on the stats. */
-	tfb->internal->entryRelay->measureCount++;
-	tfb->internal->exitRelay->measureCount++;
+	 * counted as a "successful measurement" but have no bearing on the stats.
+	 * However, we do not replicate it if this would likely cause a relay to be skipped entirely.
+	 */
+	if (MEASUREMENTS_PER_SLICE > 1) {
+		tfb->internal->entryRelay->measureCount++;
+		tfb->internal->exitRelay->measureCount++;
+	}
 }
 
 void torflowbase_enableCircuits(TorFlowBase* tfb) {
