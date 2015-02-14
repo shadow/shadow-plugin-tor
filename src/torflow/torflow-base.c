@@ -781,8 +781,6 @@ void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize r
 	tfb->internal->exitRelay->t_total = g_slist_prepend(tfb->internal->exitRelay->t_total, GINT_TO_POINTER(totalTime));
 	tfb->internal->exitRelay->bytesPushed = g_slist_prepend(tfb->internal->exitRelay->bytesPushed, GINT_TO_POINTER(contentLength));
 	tfb->internal->exitRelay->measureCount++;
-
-	for 
 }
 
 void torflowbase_updateRelays(TorFlowBase* tfb, GSList* relays) {
