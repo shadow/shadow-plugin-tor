@@ -6,7 +6,12 @@
 
 struct _TorFlowAggregator {
 	ShadowLogFunc slogf;
-	gint numSlices;
+	// num slices expected based on initial reading of input v3bw
+	// may not be the number of slices that are actually being measured
+	gint numSlicesExpected;
+	// num slices we actually have based on descriptors from tor
+	// may be less than expected because torflow will ignore relays without the FAST flag
+	gint numSlicesActual;
 	gint sliceSize;
 	gboolean* seenSlice;
 	gboolean loadedInitial;
@@ -259,12 +264,12 @@ void _torflowaggregator_readInitialAdvertisements(TorFlowAggregator* tfa) {
 	fclose(fp);
 
 	//figure out how many slices there will be
-	tfa->numSlices = (g_hash_table_size(tfa->relayStats)+tfa->sliceSize-1)/tfa->sliceSize;
-	tfa->seenSlice = g_new(gboolean, tfa->numSlices);
-	for(gint i = 0; i < tfa->numSlices; i++) {
+	tfa->numSlicesExpected = (g_hash_table_size(tfa->relayStats)+tfa->sliceSize-1)/tfa->sliceSize;
+	tfa->seenSlice = g_new(gboolean, tfa->numSlicesExpected);
+	for(gint i = 0; i < tfa->numSlicesExpected; i++) {
 		tfa->seenSlice[i] = FALSE;
 	}
-	tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "Expecting at least %d slices", tfa->numSlices);
+	tfa->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "Expecting at least %d slices", tfa->numSlicesExpected);
 
 	tfa->loadedInitial = TRUE;
 }
@@ -329,19 +334,49 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measur
 	}
 
 	//tfa->seenSlice is NULL when we're done checking if we've got all slices
-	if(tfa->seenSlice) {
+	gboolean stillNeedSlices = (tfa->seenSlice == NULL) ? TRUE : FALSE;
+
+	if(stillNeedSlices) {
+	    // we just saw the current slice
 		tfa->seenSlice[currSlice] = TRUE;
-		for(i = 0; i < tfa->numSlices; i++) {
-			if(!tfa->seenSlice[i]) {
-				return; //don't print if we still have slices yet
+
+	    // now find how many slices we think we still need
+	    gint totalNumSlicesSeen = 0;
+		for(i = 0; i < tfa->numSlicesExpected; i++) {
+			if(tfa->seenSlice[i]) {
+			    totalNumSlicesSeen++;
 			}
 		}
-		g_free(tfa->seenSlice);
-		tfa->seenSlice = NULL;
-	}	
 
-	//print results to file	
-	_torflowaggregator_printToFile(tfa);
+		if(totalNumSlicesSeen >= tfa->numSlicesActual) {
+		    stillNeedSlices = FALSE;
+            //free mem we no longer need
+            g_free(tfa->seenSlice);
+            tfa->seenSlice = NULL;
+		}
+	}
+
+	if(!stillNeedSlices) {
+        //print results to file
+        _torflowaggregator_printToFile(tfa);
+	}
+}
+
+void torflowaggregator_setNumSlicesComputed(TorFlowAggregator* tfa, gchar* proberid, gint numSlices) {
+    g_assert(tfa);
+
+    // FIXME lets hope all probers get the same set of descriptors
+    // and will be setting the same numSlices value on the aggregator here
+    if(tfa->numSlicesActual == 0) {
+        tfa->numSlicesActual = numSlices;
+    }else if(tfa->numSlicesActual != numSlices) {
+        tfa->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
+                "Prober '%s' reported %i slices, but another prober reported %i."
+                "Probers do not agree on the actual number of slices! "
+                "They probably got a different set of descriptors from Tor."
+                "List index math will be off",
+                proberid ? proberid : "unknownid", numSlices, tfa->numSlicesActual);
+    }
 }
 
 void torflowaggregator_free(TorFlowAggregator* tfa) {

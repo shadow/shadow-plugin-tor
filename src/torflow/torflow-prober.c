@@ -131,7 +131,6 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 			"Descriptors Received, Building First Circuit");
 
 	tfp->internal->relays = relayList;
-	tfp->internal->numRelays = g_slist_length(relayList);
 
 	// If not initialized, load initial advertised values
 	if(!tfp->internal->initialized) {
@@ -144,6 +143,9 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 		}
 	}
 
+	// do this after we got our final list above
+	tfp->internal->numRelays = g_slist_length(tfp->internal->relays);
+
 	// Calculate the first slice this worker can work on
 	gint numSlices = (tfp->internal->numRelays + tfp->internal->sliceSize - 1) / tfp->internal->sliceSize;
 	gdouble minPct = ((gdouble)tfp->internal->workerID)/tfp->internal->numWorkers;
@@ -151,8 +153,12 @@ static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* rel
 	tfp->internal->minSlice = (gint)(numSlices * minPct);
 	tfp->internal->maxSlice = (gint)(numSlices * maxPct);
 	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-			"Measuring slices %d through %d", tfp->internal->minSlice, tfp->internal->maxSlice-1);
+			"Measuring slices %d through %d of %d total slices (have %d measureable relays)",
+			tfp->internal->minSlice, tfp->internal->maxSlice-1, numSlices, tfp->internal->numRelays);
 	tfp->internal->currSlice =  tfp->internal->minSlice - 1;
+
+	// tell the aggregator how many slices we found based on relays in descriptor list
+	torflowaggregator_setNumSlicesComputed(tfp->_tf.tfa, tfp->_tf._base.id, numSlices);
 
 	gboolean goodSlice;
 	// Create the first circuit; skip the slice if the build function returns FALSE
