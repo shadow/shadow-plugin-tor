@@ -334,7 +334,7 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measur
 	}
 
 	//tfa->seenSlice is NULL when we're done checking if we've got all slices
-	gboolean stillNeedSlices = (tfa->seenSlice == NULL) ? TRUE : FALSE;
+	gboolean stillNeedSlices = (tfa->seenSlice != NULL) ? TRUE : FALSE;
 
 	if(stillNeedSlices) {
 	    // we just saw the current slice
