@@ -5,8 +5,12 @@
 #ifndef TORFLOW_H_
 #define TORFLOW_H_
 
+/* How many times we need to measure each relay before a slice is done */
 #define MEASUREMENTS_PER_SLICE 5
+/* Time in seconds for a worker with no slices to wait before trying again */
 #define WORKER_RETRY_TIME 300
+/* Time in seconds to wait before calling a failed download a timeout */
+#define DOWNLOAD_TIMEOUT 300
 
 #include <stdlib.h>
 #include <stdio.h>

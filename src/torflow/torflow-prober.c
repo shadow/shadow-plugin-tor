@@ -22,6 +22,11 @@ struct _TorFlowProberInternal {
 	TorFlowFileServer* fileserver;
 };
 
+typedef struct _TimeoutData {
+	TorFlowProber* tfp;
+	gint measurementCircID;
+} TimeoutData;
+
 static void _torflowprober_downloadFile(TorFlowProber* tfp) {
 	g_assert(tfp);
 	gdouble percentile = tfp->internal->sliceSize * tfp->internal->currSlice / (gdouble)(tfp->internal->numRelays);
@@ -123,6 +128,33 @@ static void _torflowprober_startNextProbeCallback(TorFlowProber* tfp) {
 		}
 	}
 }
+
+static void _torflowprober_onFileServerTimeout(TorFlowProber* tfp) {
+	g_assert(tfp);
+
+	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
+			"Connection Failed");
+
+	torflowbase_recordTimeout((TorFlowBase*) tfp);
+
+	/* do another probe now */
+	_torflowprober_startNextProbeCallback(tfp);
+}
+
+static void _torflowprober_onDownloadTimeout(TimeoutData* td) {
+	g_assert(td && td->tfp);
+
+	if(td->measurementCircID == td->tfp->internal->measurementCircID) {
+		td->tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, td->tfp->_tf._base.id,
+				"Downloading over circ %i timed out", td->measurementCircID);
+		torflowbase_recordTimeout((TorFlowBase*) td->tfp);
+
+		/* do another probe now */
+		_torflowprober_startNextProbeCallback(td->tfp);
+	}
+	g_free(td);
+}
+
 
 static void _torflowprober_onDescriptorsReceived(TorFlowProber* tfp, GSList* relayList) {
 	g_assert(tfp);
@@ -228,19 +260,12 @@ static void _torflowprober_onFileServerConnected(TorFlowProber* tfp, gint socksd
 	g_assert(tfp->internal->measurementStreamSucceeded);
 	if(socksd == tfp->internal->downloadSD) {
 		_torflowprober_downloadFile(tfp);
+		TimeoutData* td = g_new0(TimeoutData, 1);
+		td->tfp = tfp;
+		td->measurementCircID = tfp->internal->measurementCircID;
+		tfp->_tf._base.scbf((ShadowPluginCallbackFunc)_torflowprober_onDownloadTimeout,
+			td, 1000*DOWNLOAD_TIMEOUT);
 	}
-}
-
-static void _torflowprober_onFileServerTimeout(TorFlowProber* tfp) {
-	g_assert(tfp);
-
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"Connection Failed");
-
-	torflowbase_recordTimeout((TorFlowBase*) tfp);
-
-	/* do another probe now */
-	_torflowprober_startNextProbeCallback(tfp);
 }
 
 static void _torflowprober_onFileDownloadComplete(TorFlowProber* tfp, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime) {
