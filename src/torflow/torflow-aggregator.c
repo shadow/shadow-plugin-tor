@@ -361,7 +361,9 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measur
 	}
 
 	if(!stillNeedSlices) {
-	    tfa->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "All measureable slices have been measured");
+	    tfa->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
+	            "All measurable slices have been measured (%i measurable out of %i expected)",
+	            tfa->numSlicesActual, tfa->numSlicesExpected);
         //print results to file
         _torflowaggregator_printToFile(tfa);
 	}

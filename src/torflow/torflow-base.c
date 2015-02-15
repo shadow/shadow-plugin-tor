@@ -123,7 +123,7 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 
 		if(g_strstr_len(parts[3], 5, "BUILT")) {
 			if(tfb->internal->waitingMeasurementCircuit && circid == tfb->internal->cachedCircId) {
-				tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+				tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
 						"finished building new measurement circuit '%i'", circid);
 
 				tfb->internal->waitingMeasurementCircuit = FALSE;
@@ -646,6 +646,8 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 	gint unmeasured = 0; //unmeasured relays
 	gint partial = 0; //partially measured relays
 	gint measured = 0; //fully measured relays
+	gint finishedRequiredProbes = 0; //num probes that we finished
+	gint totalRequiredProbes = 0; //total number of probes needed to measure all relays
 
 	/* Make a pass to count the number of entries/exits with the lowest
 	 * measurement count, then select one of those at random from each
@@ -670,6 +672,8 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 			}
 		}
 		//counting for the sake of logging progress
+		totalRequiredProbes += MEASUREMENTS_PER_SLICE;
+		finishedRequiredProbes += MIN(MEASUREMENTS_PER_SLICE, current->measureCount);
 		if (current->measureCount == 0) {
 			unmeasured++;
 		} else if (current->measureCount >= MEASUREMENTS_PER_SLICE) {
@@ -689,11 +693,11 @@ gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlic
 		tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id, "No entries in slice %i - skipping slice", currSlice);
 		return NULL;	
 	} else if (MEASUREMENTS_PER_SLICE == 1) {
-		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i",
-				currSlice, measured, all);
+		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i (%i/%i probes complete)",
+				currSlice, measured, all, finishedRequiredProbes, totalRequiredProbes);
 	} else {
-		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i (%i partially measured)",
-				currSlice, measured, all, partial);
+		tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i progress (measured/total): %i/%i (%i partially measured, %i/%i probes complete)",
+				currSlice, measured, all, partial, finishedRequiredProbes, totalRequiredProbes);
 	}
 
 	//choose uniformly from all entries and exits with the lowest measure count.
