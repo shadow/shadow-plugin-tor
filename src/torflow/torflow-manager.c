@@ -426,6 +426,28 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
     return tfm;
 }
 
+static void _torflowmanager_activateBase(TorFlowManager* tfm) {
+    /* collect the events that are ready */
+    struct epoll_event epevs[100];
+    gint nfds = epoll_wait(tfm->baseED, epevs, 100, 0);
+    if(nfds == -1) {
+        tfm->slogf(SHADOW_LOG_LEVEL_CRITICAL, tfm->_base.id,
+                "error in epoll_wait");
+    } else {
+        /* activate correct component for every socket thats ready */
+        for(gint i = 0; i < nfds; i++) {
+            gint d = epevs[i].data.fd;
+            uint32_t e = epevs[i].events;
+            if(d == torflowbase_getControlSD(&tfm->_base)) {
+                torflowbase_activate(&tfm->_base, d, e);
+            } else {
+                tfm->slogf(SHADOW_LOG_LEVEL_WARNING, tfm->_base.id,
+                        "got readiness on unknown descriptor: %i", d);
+            }
+        }
+    }
+}
+
 void torflowmanager_ready(TorFlowManager* tfm) {
 	g_assert(tfm);
 
@@ -445,15 +467,20 @@ void torflowmanager_ready(TorFlowManager* tfm) {
 		gint d = epevs[i].data.fd;
 		uint32_t e = epevs[i].events;
 
-
-		TorFlowProber* prober = g_hash_table_lookup(tfm->probers, GINT_TO_POINTER(d));
-		if(prober) {
+		if(d == tfm->baseED) {
             tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
                 "handling events %i for fd %i", e, d);
-            torflow_ready((TorFlow*)prober);
+            _torflowmanager_activateBase(tfm);
 		} else {
-			tfm->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-					"helper lookup failed for fd '%i'", d);
+            TorFlowProber* prober = g_hash_table_lookup(tfm->probers, GINT_TO_POINTER(d));
+            if(prober) {
+                tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
+                    "handling events %i for fd %i", e, d);
+                torflow_ready((TorFlow*)prober);
+            } else {
+                tfm->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                        "helper lookup failed for fd '%i'", d);
+            }
 		}
 	}
 }
