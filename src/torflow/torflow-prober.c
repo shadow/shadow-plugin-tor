@@ -229,21 +229,24 @@ static void _torflowprober_transitionToNextProbe(TorFlowProber* tfp) {
 	tfp->internal->measurementCircID = 0;
 	tfp->internal->measurementStreamID = 0;
 
-	_torplowprober_logProgress(tfp);
+	if(tfp->internal->currentSlice) {
+        _torplowprober_logProgress(tfp);
 
-	if(_torflowprober_isDoneWithCurrentSlice(tfp)) {
-	    tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-	            "Finished slice %u", tfp->internal->currentSlice->sliceNumber);
+        if(_torflowprober_isDoneWithCurrentSlice(tfp)) {
+            tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
+                    "Completed slice %u", tfp->internal->currentSlice->sliceNumber);
 
-	    // report results back to manager and let him handle it
-	    TorFlowSlice* slice = tfp->internal->currentSlice;
-	    tfp->internal->currentSlice = NULL;
-	    torflowmanager_notifySliceMeasured(tfp->internal->tfm, slice);
-	    torflowprober_continue(tfp);
-	} else {
-        // If not done, build new circuit and stop worrying
-	    _torflowprober_startNextProbe(tfp);
+            // report results back to manager and let him handle it
+            TorFlowSlice* slice = tfp->internal->currentSlice;
+            tfp->internal->currentSlice = NULL;
+            torflowmanager_notifySliceMeasured(tfp->internal->tfm, slice);
+            torflowprober_continue(tfp);
+        } else {
+            // If not done, build new circuit and stop worrying
+            _torflowprober_startNextProbe(tfp);
+        }
 	}
+
 }
 
 static void _torflowprober_recordTimeout(TorFlowProber* tfp) {
