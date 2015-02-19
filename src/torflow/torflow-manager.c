@@ -16,9 +16,12 @@ struct _TorFlowManager {
 	gint workers;
 
     /* info about relays */
-	gint slicesize;
 	GHashTable* AllRelaysByFingerprint;
+	gint slicesize;
 	GQueue* currentSlices;
+	guint numMeasurableRelaysThisRound;
+	guint numMeasurableSlicesThisRound;
+	guint numRemainingSlicesThisRound;
 	gboolean round1Done;
 };
 
@@ -48,8 +51,8 @@ static void _torflowmanager_freeRelay(TorFlowRelay* r) {
 
 static void _torflowmanager_freeSlice(TorFlowSlice* slice) {
     if(slice) {
-        if(slice->relays) {
-            g_slist_free(slice->relays);
+        if(slice->allRelays) {
+            g_slist_free_full(slice->allRelays, (GDestroyNotify)_torflowmanager_freeRelay);
         }
         g_free(slice);
     }
@@ -105,17 +108,27 @@ TorFlowSlice* torflowmanager_getNextSlice(TorFlowManager* tfm) {
 
 void torflowmanager_notifySliceMeasured(TorFlowManager* tfm, TorFlowSlice* slice) {
     // called by the prober when it finishes measuring a slice
+    tfm->numRemainingSlicesThisRound--;
+
+    tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
+            "Slice %u measurements are complete! We have %u/%u slices remaining to measure in this round.",
+            tfm->numRemainingSlicesThisRound, tfm->numMeasurableSlicesThisRound);
+
     // see if we're done with all slices
-    gboolean thisRoundIsDone = g_queue_is_empty(tfm->currentSlices);
+    gboolean thisRoundIsDone = (tfm->numRemainingSlicesThisRound == 0) ? TRUE : FALSE;
     if(thisRoundIsDone) {
+        tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
+                "We have completed %s round of measurements of %u relays in %u slices.",
+                tfm->round1Done ? "another" : "the first",
+                tfm->numMeasurableRelaysThisRound, tfm->numMeasurableSlicesThisRound);
         tfm->round1Done = TRUE;
     }
 
-    // Report stats to aggregator and to log file
+    // Report new slice stats to aggregator and to log file, even if the round is not done
     torflowaggregator_reportMeasurements(tfm->tfa, slice, tfm->round1Done);
 
+    /* after every round, we should fetch updated descriptors and start the next round */
     if(thisRoundIsDone) {
-        /* we should fetch updated descriptors and start the next round */
         torflowbase_requestInfo(&tfm->_base);
     }
 }
@@ -158,22 +171,22 @@ static guint _torflowmanager_parseAndStoreRelays(TorFlowManager* tfm, GQueue* de
             }
             case 's': {
                 if(g_strstr_len(line, -1, " Running")) {
-                    currentRelay->running = TRUE;
+                    currentRelay->isRunning = TRUE;
                 } else {
-                    currentRelay->running = FALSE;
+                    currentRelay->isRunning = FALSE;
                 }
                 if(g_strstr_len(line, -1, " Fast")) {
-                    currentRelay->fast = TRUE;
+                    currentRelay->isFast = TRUE;
                 } else {
-                    currentRelay->fast = FALSE;
+                    currentRelay->isFast = FALSE;
                 }
                 if(g_strstr_len(line, -1, " Exit")) {
-                    currentRelay->exit = TRUE;
+                    currentRelay->isExit = TRUE;
                     if(g_strstr_len(line, -1, " BadExit")) {
-                        currentRelay->running = FALSE;
+                        currentRelay->isRunning = FALSE;
                     }
                 } else {
-                    currentRelay->exit = FALSE;
+                    currentRelay->isExit = FALSE;
                 }
 
                 break;
@@ -207,7 +220,7 @@ static GQueue* _torflowmanager_getMeasurableRelays(TorFlowManager* tfm) {
     g_hash_table_iter_init(&iter, tfm->AllRelaysByFingerprint);
     while(g_hash_table_iter_next(&iter, &key, &value)) {
         TorFlowRelay* r = value;
-        if(r && r->fast && r->running) {
+        if(r && r->isFast && r->isRunning) {
             g_queue_insert_sorted(measurableRelays, r, torflowutil_compareRelaysData, NULL);
         }
     }
@@ -228,29 +241,37 @@ static guint _torflowmanager_updateSlices(TorFlowManager* tfm, GQueue* allMeasur
     TorFlowSlice* newSlice = NULL;
     while(allMeasurableRelays && g_queue_peek_head(allMeasurableRelays)) {
         if(!newSlice) {
-            numSlices++;
             newSlice = g_new0(TorFlowSlice, 1);
             newSlice->sliceNumber = numSlices;
             newSlice->filename = _torflowmanager_getSliceDownloadFileName(tfm, numSlices, numMeasurableRelays);
-            g_queue_push_tail(tfm->currentSlices, newSlice);
         }
 
         TorFlowRelay* r = g_queue_pop_head(allMeasurableRelays);
-        newSlice->relays = g_slist_append(newSlice->relays, r);
-        newSlice->numRelays++;
-        if(newSlice->numRelays >= tfm->slicesize) {
+        newSlice->allRelays = g_slist_append(newSlice->allRelays, r);
+        newSlice->allRelaysLength++;
+
+        if(r->isExit) {
+            newSlice->exitRelays = g_slist_append(newSlice->exitRelays, r);
+            newSlice->exitRelaysLength++;
+        } else {
+            newSlice->entryRelays = g_slist_append(newSlice->entryRelays, r);
+            newSlice->entryRelaysLength++;
+        }
+
+        // finish building the slice if it is full or we have no relays left to add
+        if(newSlice->allRelaysLength >= tfm->slicesize || g_queue_peek_head(allMeasurableRelays) == NULL) {
+            // make sure all slices have at least one exit node, otherwise it cannot be measured
+            if(newSlice->exitRelaysLength > 0 && newSlice->entryRelaysLength > 0) {
+                g_queue_push_tail(tfm->currentSlices, newSlice);
+                numSlices++;
+            } else {
+                tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
+                            "Slice %u is not measurable! Ignoring.", newSlice->sliceNumber);
+                _torflowmanager_freeSlice(newSlice);
+            }
             newSlice = NULL;
         }
     }
-
-    // FIXME make sure all slices have at least one exit node, otherwise it cannot be measured
-//    if (tfp->internal->currSlice >= tfp->internal->maxSlice) {
-//        tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-//            "No measurable slices for this worker!");
-//        tfp->_tf._base.scbf((BootstrapCompleteFunc)_torflowprober_onBootstrapComplete,
-//            tfp, 1000*WORKER_RETRY_TIME);
-//
-//    }
 
     return numSlices;
 }
@@ -280,6 +301,8 @@ static void _torflowmanager_onDescriptorsReceived(TorFlowManager* tfm, GQueue* d
             "New descriptors received. We have %u relays, %u measurable relays, and %u slices.",
             numRelays, numMeasurableRelays, numSlices);
 
+    tfm->numMeasurableRelaysThisRound = numMeasurableRelays;
+    tfm->numMeasurableSlicesThisRound = tfm->numRemainingSlicesThisRound = numSlices;
 
     /* now our slices are ready, start the probers
      * when they finish bootstrapping, they will call torflowmanager_getNextSlice */
@@ -290,7 +313,7 @@ static void _torflowmanager_onDescriptorsReceived(TorFlowManager* tfm, GQueue* d
         g_hash_table_foreach(tfm->probers, _torflowmanager_continueProber, NULL);
     }
 
-    // XXX i dont think we need to load anything anymore since the descriptors
+    // XXX rgj: i dont think we need to load anything anymore since the descriptors
     // will have our default starting values already
     // If not initialized, load initial advertised values
 //    if(!tfp->internal->initialized) {

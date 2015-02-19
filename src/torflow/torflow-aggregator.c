@@ -331,7 +331,7 @@ static void _torflowaggregator_printMeasurements(TorFlowAggregator* tfa, TorFlow
     tfa->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "Slice %u complete. Measurements:", slice->sliceNumber);
 
     // loop through measurements and print data
-    GSList* currentNode = slice->relays;
+    GSList* currentNode = slice->allRelays;
     while (currentNode) {
         TorFlowRelay* current = currentNode->data;
         if (current && current->measureCount > 0) {
@@ -371,7 +371,7 @@ void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, TorFlowSlice* 
 	g_assert(tfa);
 	
 	//add all relays that the worker measured to our stats list
-	GSList* currentNode = slice->relays;
+	GSList* currentNode = slice->allRelays;
 	while (currentNode) {
 		TorFlowRelay* current = currentNode->data;
 		if (current->measureCount >= MEASUREMENTS_PER_SLICE) {

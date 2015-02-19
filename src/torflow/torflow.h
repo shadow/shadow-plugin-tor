@@ -37,9 +37,9 @@ typedef struct _TorFlowRelay {
 	gint descriptorBandwidth;
 	gint advertisedBandwidth;
 	gint newBandwidth;
-	gboolean exit;
-	gboolean running;
-	gboolean fast;
+	gboolean isExit;
+	gboolean isRunning;
+	gboolean isFast;
 	gint measureCount;
 	GSList* t_rtt;
 	GSList* t_payload;
@@ -50,8 +50,14 @@ typedef struct _TorFlowRelay {
 typedef struct _TorFlowSlice {
     guint sliceNumber;
     gchar* filename;
-    GSList* relays;
-    guint numRelays;
+
+    /* all the relays assigned to this slice */
+    GSList* allRelays;
+    guint allRelaysLength;
+    GSList* exitRelays;
+    guint exitRelaysLength;
+    GSList* entryRelays;
+    guint entryRelaysLength;
     TorFlowRelay* currentExitRelay;
     TorFlowRelay* currentEntryRelay;
 } TorFlowSlice;
