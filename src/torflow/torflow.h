@@ -47,9 +47,18 @@ typedef struct _TorFlowRelay {
 	GSList* bytesPushed;
 } TorFlowRelay;
 
+typedef struct _TorFlowSlice {
+    guint sliceNumber;
+    gchar* filename;
+    GSList* relays;
+    guint numRelays;
+    TorFlowRelay* currentExitRelay;
+    TorFlowRelay* currentEntryRelay;
+} TorFlowSlice;
+
 typedef void (*ReadyFunc)(gpointer data);
 typedef void (*BootstrapCompleteFunc)(gpointer data);
-typedef void (*DescriptorsReceivedFunc)(gpointer data1, gpointer data2);
+typedef void (*DescriptorsReceivedFunc)(gpointer data1, GQueue* descriptorLines);
 typedef void (*MeasurementCircuitBuiltFunc)(gpointer data, gint circid);
 typedef void (*StreamNewFunc)(gpointer data, gint streamid, gint circid,
         gchar* targetAddress, gint targetPort, gchar* sourceAddress, gint sourcePort);
@@ -85,16 +94,12 @@ void torflowbase_free(TorFlowBase* tfb);
 void torflowbase_start(TorFlowBase* tfb);
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events);
 void torflowbase_requestInfo(TorFlowBase* tfb);
-void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currSlice);
 gint torflowbase_getControlSD(TorFlowBase* tfb);
 const gchar* torflowbase_getCurrentPath(TorFlowBase* tfb);
-gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gint sliceSize, gint currSlice);
+gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gchar* path);
 void torflowbase_closeCircuit(TorFlowBase* tfb, gint circid);
 void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint circid);
 void torflowbase_stopReading(TorFlowBase* tfb, gchar* addressString);
-void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime);
-void torflowbase_recordTimeout(TorFlowBase* tfb);
-void torflowbase_updateRelays(TorFlowBase* tfb, GSList* relays);
 void torflowbase_enableCircuits(TorFlowBase* tfb);
 void torflowbase_closeStreams(TorFlowBase* tfb, gchar* addressString);
 void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid);
@@ -102,22 +107,21 @@ void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid);
 typedef struct _TorFlowAggregator TorFlowAggregator;
 
 gint torflowaggregator_loadFromPresets(TorFlowAggregator* tfa, GSList* relays);
-void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, GSList* measuredRelays, gint sliceSize, gint currSlice);
-void torflowaggregator_setNumSlicesComputed(TorFlowAggregator* tfa, gchar* proberid, gint numSlices);
+void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, TorFlowSlice* slice, gboolean printFile);
 void torflowaggregator_free(TorFlowAggregator* tfa);
-TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gint sliceSize, gdouble nodeCap);
+TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gdouble nodeCap);
 
 typedef struct _TorFlow TorFlow;
 typedef struct _TorFlowInternal TorFlowInternal;
 struct _TorFlow {
 	TorFlowBase _base;
-	TorFlowAggregator* tfa;
 	TorFlowInternal* internal;
 };
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort, gint workerID);
+		in_port_t controlPort, in_port_t socksPort, gint workerID);
+void torflow_start(TorFlow* tf);
 gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver);
 void torflow_freeDownload(TorFlow* tf, gint socksd);
 void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath);
@@ -132,15 +136,19 @@ struct _TorFlowProber {
 	TorFlowProberInternal* internal;
 };
 
-TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, gint workerID, gint numWorkers,
-		gint pausetime, gint sliceSize,
-		in_port_t controlPort, in_port_t socksPort, TorFlowFileServer* fileserver);
-
 typedef struct _TorFlowManager TorFlowManager;
 TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf);
 void torflowmanager_ready(TorFlowManager* tfm);
 void torflowmanager_free(TorFlowManager* tfm);
+TorFlowSlice* torflowmanager_getNextSlice(TorFlowManager* tfm);
+void torflowmanager_notifySliceMeasured(TorFlowManager* tfm, TorFlowSlice* slice);
+
+TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
+        TorFlowManager* tfm, gint workerID, gint numWorkers,
+		gint pausetime, in_port_t controlPort, in_port_t socksPort, TorFlowFileServer* fileserver);
+void torflowprober_start(TorFlowProber* tfp);
+void torflowprober_continue(TorFlowProber* tfp);
+
 
 void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events, ShadowLogFunc slogf);
 gsize torflowutil_computeTime(struct timespec* start, struct timespec* end);
@@ -151,6 +159,8 @@ gint torflowutil_meanBandwidth(TorFlowRelay* relay);
 gint torflowutil_filteredBandwidth(TorFlowRelay* relay, gint meanBandwidth);
 GString* torflowutil_base64ToBase16(GString* base64);
 gint torflowutil_compareRelays(gconstpointer a, gconstpointer b);
+gint torflowutil_compareRelaysData(gconstpointer a, gconstpointer b, gpointer user_data);
+gboolean torflowutil_relayEqualFunc(gconstpointer a, gconstpointer b);
 
 TorFlowFileServer* torflowfileserver_new(const gchar* name, in_port_t networkPort);
 void torflowfileserver_ref(TorFlowFileServer* tffs);

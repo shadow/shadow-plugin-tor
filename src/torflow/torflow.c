@@ -398,12 +398,11 @@ static void _torflow_onFree(TorFlow* tf) {
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-		TorFlowAggregator* tfa, in_port_t controlPort, in_port_t socksPort, gint workerID) {
+		in_port_t controlPort, in_port_t socksPort, gint workerID) {
 	g_assert(tf);
 	g_assert(eventHandlers);
 
 	tf->internal = g_new0(TorFlowInternal, 1);
-	tf->tfa = tfa;
 
 	/* use epoll to asynchronously watch events for all of our sockets */
 	tf->internal->epolld = epoll_create(1);
@@ -424,7 +423,9 @@ void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 	events.onFree = (FreeFunc) _torflow_onFree;
 
 	torflowbase_init((TorFlowBase*)tf, &events, slogf, scbf, controlPort, tf->internal->epolld, workerID);
+}
 
+void torflow_start(TorFlow* tf) {
 	torflowbase_start((TorFlowBase*) tf);
 }
 
