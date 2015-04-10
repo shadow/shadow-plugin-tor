@@ -512,7 +512,7 @@ def get(targetdir, fileurl, sigurl, keyring):
     
     question = "Do you want to use the included keyring instead of the running user's keyring?"
     answer = query_yes_no(question)
-    retcode = 0
+    retcode = -2
     gpg_binaries = ["gpg2", "gpg"]
     for gpg_binary in gpg_binaries:
         try:
@@ -525,15 +525,18 @@ def get(targetdir, fileurl, sigurl, keyring):
                 logging.info("running \'{0}\'".format(gpg))
                 retcode = subprocess.call(shlex.split(gpg))
         except (OSError):
-            logging.info("GnuPGv2 not present, using GnuPGv1 instead")
+            logging.info(gpg_binary + " binary is not present")
             continue
         break
     success = False
     if retcode == 0: 
         logging.info("Signature is good")
         success = True
-    else: 
-        logging.warning("signature is bad")
+    else:
+        if retcode == -2:
+            logging.warning("No GnuPG binary found")
+        else:
+            logging.warning("Signature is bad")
         if query_yes_no("Do you want to continue without verifying the signature?"): success = True
 
     if success and query_yes_no("Everything looks good. OK to proceed?"): return targetfile
