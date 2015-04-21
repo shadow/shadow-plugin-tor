@@ -111,8 +111,9 @@ int shadowtor_openSocket(int domain, int type, int protocol) {
 }
 
 gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
-	time_t now = time(NULL);
+    shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "initializing tor...");
 
+	time_t now = time(NULL);
 	update_approx_time(now);
 	tor_threads_init();
 
@@ -124,7 +125,7 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 #endif
 
 	if (tor_init(argc, argv) < 0) {
-		return -1;
+		goto initerr;
 	}
 
 	  /* load the private keys, if we're supposed to have them, and set up the
@@ -138,7 +139,7 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
     if (idkey == NULL) {
 	  if (init_keys() < 0) {
 	    log_err(LD_BUG,"Error initializing keys; exiting");
-	    return -1;
+	    goto initerr;
 	  }
     }
 
@@ -165,16 +166,16 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	}
 #ifndef SCALLION_NOV2DIR
 	if (router_reload_v2_networkstatus()) {
-		return -1;
+	    goto initerr;
 	}
 #endif
 	if (router_reload_consensus_networkstatus()) {
-		return -1;
+	    goto initerr;
 	}
 
 	/* load the routers file, or assign the defaults. */
 	if (router_reload_router_list()) {
-		return -1;
+	    goto initerr;
 	}
 
 	/* load the networkstatuses. (This launches a download for new routers as
@@ -227,7 +228,12 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
     /* run the startup events */
     shadowtor_notify(stor);
 
+    shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "success initializing tor");
 	return 0;
+
+	initerr:
+	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "error initializing tor");
+    return -1;
 }
 
 static gchar* _shadowtor_getFormatedArg(gchar* argString, const gchar* home, const gchar* hostname) {
@@ -269,14 +275,20 @@ ScallionTor* shadowtor_new(ShadowFunctionTable* shadowlibFuncs, gchar* hostname,
 
 	/* initialize tor */
 	shadowtor.stor = stor;
-	shadowtor_start(stor, torargc+1, formattedArgs);
+	gint result = shadowtor_start(stor, torargc+1, formattedArgs);
 
 	/* free the new strings */
 	for(gint i = 0; i < torargc+1; i++) {
 		g_free(formattedArgs[i]);
 	}
 
-	return stor;
+	if(result < 0) {
+	    // there was an error
+	    g_free(stor);
+	    return NULL;
+	} else {
+        return stor;
+	}
 }
 
 void shadowtor_notify(ScallionTor* stor) {

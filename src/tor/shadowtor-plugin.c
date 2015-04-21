@@ -61,12 +61,16 @@ static void _shadowtorplugin_new(gint argc, gchar* argv[]) {
 
 static void _shadowtorplugin_free() {
 	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "shadowtorplugin_free called");
-	shadowtor_free(shadowtor.stor);
+	if(shadowtor.stor) {
+        shadowtor_free(shadowtor.stor);
+	}
 }
 
 static void _shadowtorplugin_notify() {
 	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "_shadowtorplugin_notify called");
-	shadowtor_notify(shadowtor.stor);
+	if(shadowtor.stor) {
+        shadowtor_notify(shadowtor.stor);
+	}
 }
 
 typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
