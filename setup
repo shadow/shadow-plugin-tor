@@ -511,22 +511,32 @@ def get(targetdir, fileurl, sigurl, keyring):
     if (not os.path.exists(targetsig)) and (download(sigurl, targetsig) < 0): return None
     
     question = "Do you want to use the included keyring instead of the running user's keyring?"
-    retcode = 0
-    if query_yes_no(question):
-        gpg = "gpg --keyring {0} --verify {1}".format(keyring, targetsig)
-        logging.info("running \'{0}\'".format(gpg))
-        retcode = subprocess.call(shlex.split(gpg))
-    else:
-        gpg = "gpg --verify {0}".format(targetsig)
-        logging.info("running \'{0}\'".format(gpg))
-        retcode = subprocess.call(shlex.split(gpg))
-
+    answer = query_yes_no(question)
+    retcode = -2
+    gpg_binaries = ["gpg2", "gpg"]
+    for gpg_binary in gpg_binaries:
+        try:
+            if answer:
+                gpg = gpg_binary + " --keyring {0} --verify {1}".format(keyring, targetsig)
+                logging.info("running \'{0}\'".format(gpg))
+                retcode = subprocess.call(shlex.split(gpg))
+            else:
+                gpg = gpg_binary + " --verify {0}".format(targetsig)
+                logging.info("running \'{0}\'".format(gpg))
+                retcode = subprocess.call(shlex.split(gpg))
+        except (OSError):
+            logging.info(gpg_binary + " binary is not present")
+            continue
+        break
     success = False
     if retcode == 0: 
         logging.info("Signature is good")
         success = True
-    else: 
-        logging.warning("signature is bad")
+    else:
+        if retcode == -2:
+            logging.warning("No GnuPG binary found")
+        else:
+            logging.warning("Signature is bad")
         if query_yes_no("Do you want to continue without verifying the signature?"): success = True
 
     if success and query_yes_no("Everything looks good. OK to proceed?"): return targetfile
