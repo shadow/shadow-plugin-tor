@@ -125,6 +125,8 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 #endif
 
 	if (tor_init(argc, argv) < 0) {
+        shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                "Error in tor_init; exiting");
 		goto initerr;
 	}
 
@@ -161,20 +163,26 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	control_event_bootstrap(BOOTSTRAP_STATUS_STARTING, 0);
 
 	if (trusted_dirs_reload_certs()) {
-		log_warn(LD_DIR,
-			 "Couldn't load all cached v3 certificates. Starting anyway.");
+        shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                "Couldn't load all cached v3 certificates. Starting anyway.");
 	}
 #ifndef SCALLION_NOV2DIR
 	if (router_reload_v2_networkstatus()) {
+        shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                "Error in router_reload_v2_networkstatus; exiting");
 	    goto initerr;
 	}
 #endif
 	if (router_reload_consensus_networkstatus()) {
+        shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+                "Error in router_reload_consensus_networkstatus; exiting");
 	    goto initerr;
 	}
 
 	/* load the routers file, or assign the defaults. */
 	if (router_reload_router_list()) {
+	    shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
+	            "Error in router_reload_router_list; exiting");
 	    goto initerr;
 	}
 
@@ -232,7 +240,7 @@ gint shadowtor_start(ScallionTor* stor, gint argc, gchar *argv[]) {
 	return 0;
 
 	initerr:
-	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__, "error initializing tor");
+	shadowtor.shadowlibFuncs->log(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "error initializing tor");
     return -1;
 }
 
