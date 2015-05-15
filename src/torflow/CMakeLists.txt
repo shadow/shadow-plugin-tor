@@ -3,7 +3,7 @@ find_package(GLIB REQUIRED)
 include_directories(AFTER ${GLIB_INCLUDES})
 
 ## Download smaller files than normal Torflow (improves running time)
-add_definitions( -DSMALLFILES )
+#add_definitions( -DSMALLFILES )
 
 ## torflow plug-in
 set(sources
