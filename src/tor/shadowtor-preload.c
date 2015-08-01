@@ -15,66 +15,38 @@
 #include <glib.h>
 #include <gmodule.h>
 
-#include "shadowtor.h"
+#include "torlog.h"
 
 /* tor functions */
-
-typedef int (*tor_open_socket_fp)(int, int, int);
-typedef int (*tor_gettimeofday_fp)(struct timeval *);
 typedef int (*spawn_func_fp)();
+typedef int (*write_str_to_file_fp)(const char *, const char *, int);
 typedef int (*crypto_global_init_fp)(int, const char*, const char*);
 typedef int (*crypto_global_cleanup_fp)(void);
 typedef int (*crypto_early_init_fp)(void);
 typedef int (*crypto_seed_rng_fp)(int);
 typedef int (*crypto_init_siphash_key_fp)(void);
 typedef void (*tor_ssl_global_init_fp)(void);
-typedef void (*mark_logs_temp_fp)(void);
-typedef int (*write_str_to_file_fp)(const char *, const char *, int);
-typedef void (*cpuworker_main_fp)(void*);
-typedef void (*sockmgr_thread_main_fp)(void*);
 
-/* shadowtor funcs */
-
-typedef void (*shadowtor_newSockMgrWorker_fp)();
-typedef void (*shadowtor_newCPUWorker_fp)(int);
-typedef int (*shadowtor_openSocket_fp)(int, int, int);
-typedef void (*shadowtor_setLogging_fp)();
-typedef void (*shadowtor_loopexit_fp)();
-typedef void (*shadowtor_trackConsensusUpdate_fp)(const char*, const char*);
-
-typedef struct _TorInterposeFuncs TorInterposeFuncs;
-struct _TorInterposeFuncs {
-	tor_open_socket_fp tor_open_socket;
-	tor_gettimeofday_fp tor_gettimeofday;
+typedef struct _InterposeFuncs InterposeFuncs;
+struct _InterposeFuncs {
 	spawn_func_fp spawn_func;
+	write_str_to_file_fp write_str_to_file;
 	crypto_global_init_fp crypto_global_init;
 	crypto_global_cleanup_fp crypto_global_cleanup;
     crypto_early_init_fp crypto_early_init;
     crypto_seed_rng_fp crypto_seed_rng;
     crypto_init_siphash_key_fp crypto_init_siphash_key;
-
 	tor_ssl_global_init_fp tor_ssl_global_init;
-	mark_logs_temp_fp mark_logs_temp;
-	write_str_to_file_fp write_str_to_file;
-	cpuworker_main_fp cpuworker_main;
-	sockmgr_thread_main_fp sockmgr_thread_main;
-};
-
-typedef struct _ShadowTorInterposeFuncs ShadowTorInterposeFuncs;
-struct _ShadowTorInterposeFuncs {
-    shadowtor_newSockMgrWorker_fp shadowtor_newSockMgrWorker;
-    shadowtor_newCPUWorker_fp shadowtor_newCPUWorker;
-    shadowtor_openSocket_fp shadowtor_openSocket;
-    shadowtor_setLogging_fp shadowtor_setLogging;
-    shadowtor_loopexit_fp shadowtor_loopexit;
-    shadowtor_trackConsensusUpdate_fp shadowtor_trackConsensusUpdate;
 };
 
 typedef struct _PreloadWorker PreloadWorker;
 struct _PreloadWorker {
 	GModule* handle;
-	TorInterposeFuncs tor;
-	ShadowTorInterposeFuncs shadowtor;
+	InterposeFuncs vtable;
+	int consensusCounter;
+	int opensslThreadSupport;
+	int libeventThreadSupport;
+	int libeventHasError;
 };
 
 /*
@@ -100,6 +72,9 @@ static PreloadWorker* _shadowtorpreload_getWorker() {
 /* forward declarations */
 static void _shadowtorpreload_cryptoSetup(int);
 static void _shadowtorpreload_cryptoTeardown();
+const RAND_METHOD* RAND_get_rand_method();
+typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
+typedef unsigned long (*CRYPTO_id_func)(void);
 
 /*
  * here we search and save pointers to the functions we need to call when
@@ -109,38 +84,59 @@ static void _shadowtorpreload_cryptoTeardown();
  * not *node* dependent, only *thread* dependent.
  */
 
-void shadowtorpreload_init(GModule* handle, gint nLocks) {
+void shadowtorpreload_init(GModule* handle) {
 	/* lookup all our required symbols in this worker's module, asserting success */
 	PreloadWorker* worker = _shadowtorpreload_getWorker();
 	worker->handle = handle;
 
 	/* tor function lookups */
-	g_assert(g_module_symbol(handle, "tor_open_socket", (gpointer*)&(worker->tor.tor_open_socket)));
-	g_assert(g_module_symbol(handle, "tor_gettimeofday", (gpointer*)&(worker->tor.tor_gettimeofday)));
-	g_assert(g_module_symbol(handle, "spawn_func", (gpointer*)&(worker->tor.spawn_func)));
-    g_assert(g_module_symbol(handle, "mark_logs_temp", (gpointer*)&(worker->tor.mark_logs_temp)));
-    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->tor.crypto_global_init)));
-    g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->tor.crypto_global_cleanup)));
-    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->tor.tor_ssl_global_init)));
-    g_assert(g_module_symbol(handle, "cpuworker_main", (gpointer*)&(worker->tor.cpuworker_main)));
-    g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(worker->tor.write_str_to_file)));
+	g_assert(g_module_symbol(handle, "spawn_func", (gpointer*)&(worker->vtable.spawn_func)));
+    g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(worker->vtable.write_str_to_file)));
+    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->vtable.crypto_global_init)));
+    g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->vtable.crypto_global_cleanup)));
+    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->vtable.tor_ssl_global_init)));
 
     /* these do not exist in all Tors, so don't assert success */
-    g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->tor.crypto_early_init));
-    g_module_symbol(handle, "crypto_seed_rng", (gpointer*)&(worker->tor.crypto_seed_rng));
-    g_module_symbol(handle, "crypto_init_siphash_key", (gpointer*)&(worker->tor.crypto_init_siphash_key));
-    g_module_symbol(handle, "sockmgr_thread_main", (gpointer*)&(worker->tor.sockmgr_thread_main));
+    g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->vtable.crypto_early_init));
+    g_module_symbol(handle, "crypto_seed_rng", (gpointer*)&(worker->vtable.crypto_seed_rng));
+    g_module_symbol(handle, "crypto_init_siphash_key", (gpointer*)&(worker->vtable.crypto_init_siphash_key));
 
-    /* shadowtor function lookups */
-    g_assert(g_module_symbol(handle, "shadowtor_newSockMgrWorker", (gpointer*)&(worker->shadowtor.shadowtor_newSockMgrWorker)));
-    g_assert(g_module_symbol(handle, "shadowtor_newCPUWorker", (gpointer*)&(worker->shadowtor.shadowtor_newCPUWorker)));
-    g_assert(g_module_symbol(handle, "shadowtor_openSocket", (gpointer*)&(worker->shadowtor.shadowtor_openSocket)));
-    g_assert(g_module_symbol(handle, "shadowtor_setLogging", (gpointer*)&(worker->shadowtor.shadowtor_setLogging)));
-    g_assert(g_module_symbol(handle, "shadowtor_loopexit", (gpointer*)&(worker->shadowtor.shadowtor_loopexit)));
-    g_assert(g_module_symbol(handle, "shadowtor_trackConsensusUpdate", (gpointer*)&(worker->shadowtor.shadowtor_trackConsensusUpdate)));
+    /* handle multi-threading support*/
+
+#define OPENSSL_THREAD_DEFINES
+#include <openssl/opensslconf.h>
+#if defined(OPENSSL_THREADS)
+    /* thread support enabled! how many locks does openssl want */
+    int nLocks = CRYPTO_num_locks();
 
     /* now initialize our locking facilities, ensuring that this is only done once */
     _shadowtorpreload_cryptoSetup(nLocks);
+
+    /* make sure openssl uses Shadow's random sources and make crypto thread-safe
+     * get function pointers through LD_PRELOAD */
+    const RAND_METHOD* shadowtor_randomMethod = RAND_get_rand_method();
+    CRYPTO_lock_func shadowtor_lockFunc = CRYPTO_get_locking_callback();
+    CRYPTO_id_func shadowtor_idFunc = CRYPTO_get_id_callback();
+
+    CRYPTO_set_locking_callback(shadowtor_lockFunc);
+    CRYPTO_set_id_callback(shadowtor_idFunc);
+    RAND_set_rand_method(shadowtor_randomMethod);
+
+    worker->opensslThreadSupport = 1;
+#else
+    /* no thread support */
+    worker->opensslThreadSupport = 0;
+#endif
+
+    /* setup libevent locks */
+#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
+    worker->libeventThreadSupport = 1;
+    if(evthread_use_pthreads()) {
+    	worker->libeventHasError = 1;
+    }
+#else
+    worker->libeventThreadSupport = 0;
+#endif
 }
 
 void shadowtorpreload_clear() {
@@ -148,61 +144,51 @@ void shadowtorpreload_clear() {
     _shadowtorpreload_cryptoTeardown();
 }
 
-/* interposition happens below */
-
+/********************************************************************************
+ * start interposition functions
+ ********************************************************************************/
 
 /* tor family */
 
-
-int tor_open_socket(int domain, int type, int protocol) {
-    return _shadowtorpreload_getWorker()->shadowtor.shadowtor_openSocket(domain, type, protocol);
-}
-
-void tor_gettimeofday(struct timeval *timeval) {
-    struct timespec tp;
-    clock_gettime(CLOCK_REALTIME, &tp);
-    timeval->tv_sec = tp.tv_sec;
-    timeval->tv_usec = tp.tv_nsec/1000;
-}
-
 int spawn_func(void (*func)(void *), void *data) {
-    if(func == _shadowtorpreload_getWorker()->tor.cpuworker_main) {
-        /* this takes the place of forking a cpuworker and running cpuworker_main.
-         * func points to cpuworker_main, but we'll implement a version that
-         * works in shadow */
-        int *fdarray = data;
-        int fd = fdarray[1]; /* this side is ours */
-
-        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newCPUWorker(fd);
-
-        /* now we should be ready to receive events in vtor_cpuworker_readable */
-        return 0;
-    } else if(_shadowtorpreload_getWorker()->tor.sockmgr_thread_main != NULL &&
-            func == _shadowtorpreload_getWorker()->tor.sockmgr_thread_main) {
-        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newSockMgrWorker();
-        return 0;
-    }
+//    if(func == _shadowtorpreload_getWorker()->tor.cpuworker_main) {
+//        /* this takes the place of forking a cpuworker and running cpuworker_main.
+//         * func points to cpuworker_main, but we'll implement a version that
+//         * works in shadow */
+//        int *fdarray = data;
+//        int fd = fdarray[1]; /* this side is ours */
+//
+//        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newCPUWorker(fd);
+//
+//        /* now we should be ready to receive events in vtor_cpuworker_readable */
+//        return 0;
+//    } else if(_shadowtorpreload_getWorker()->tor.sockmgr_thread_main != NULL &&
+//            func == _shadowtorpreload_getWorker()->tor.sockmgr_thread_main) {
+//        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newSockMgrWorker();
+//        return 0;
+//    }
     return -1;
 }
 
-void mark_logs_temp(void) {
-    _shadowtorpreload_getWorker()->tor.mark_logs_temp(); // call real tor mark_logs_temp function
-    _shadowtorpreload_getWorker()->shadowtor.shadowtor_setLogging();
-}
-
 int write_str_to_file(const char *fname, const char *str, int bin) {
-    _shadowtorpreload_getWorker()->shadowtor.shadowtor_trackConsensusUpdate(fname, str);
-    return _shadowtorpreload_getWorker()->tor.write_str_to_file(fname, str, bin);
+	/* check if filepath is a consenus file. store it in separate files
+	 * so we don't lose old consenus info on overwrites. */
+	if(g_str_has_suffix(fname, "cached-consensus")) {
+	//if(g_strrstr(filepath, "cached-consensus") != NULL) {
+		GString* newPath = g_string_new(fname);
+		GError* error = NULL;
+		g_string_append_printf(newPath, ".%03i", _shadowtorpreload_getWorker()->consensusCounter++);
+		if(!g_file_set_contents(newPath->str, str, -1, &error)) {
+			log_warn(LD_GENERAL,"Error writing file '%s' to track consensus update: error %i: %s",
+					newPath->str, error->code, error->message);
+		}
+		g_string_free(newPath, TRUE);
+	}
+
+    return _shadowtorpreload_getWorker()->vtable.write_str_to_file(fname, str, bin);
 }
 
 /* libevent family */
-
-
-/* struct event_base* base */
-int event_base_loopexit(struct event_base * base, const struct timeval * t) {
-    _shadowtorpreload_getWorker()->shadowtor.shadowtor_loopexit();
-    return 0;
-}
 
 struct evdns_request* evdns_base_resolve_ipv4(struct evdns_base *base, const char *name, int flags,
     evdns_callback_type callback, void *ptr) {
@@ -227,9 +213,7 @@ struct evdns_request* evdns_base_resolve_ipv4(struct evdns_base *base, const cha
     }
 }
 
-
 /* openssl family */
-
 
 /* const AES_KEY *key
  * The key parameter has been voided to avoid requiring Openssl headers */
@@ -342,12 +326,12 @@ static const struct {
     RAND_status
 };
 
-const void* RAND_get_rand_method() {
-    return (const void *)(&shadowtorpreload_customRandMethod);
+const RAND_METHOD* RAND_get_rand_method() {
+    return (const RAND_METHOD*)(&shadowtorpreload_customRandMethod);
 }
 
-const void* RAND_SSLeay() {
-    return (const void *)(&shadowtorpreload_customRandMethod);
+RAND_METHOD* RAND_SSLeay() {
+    return (RAND_METHOD*)(&shadowtorpreload_customRandMethod);
 }
 
 
@@ -392,14 +376,14 @@ int crypto_early_init() {
 
     if(!shadowtorpreloadGlobalState.sslInitializedEarly) {
         shadowtorpreloadGlobalState.sslInitializedEarly = TRUE;
-        if(_shadowtorpreload_getWorker()->tor.crypto_early_init != NULL) {
-            result = _shadowtorpreload_getWorker()->tor.crypto_early_init();
+        if(_shadowtorpreload_getWorker()->vtable.crypto_early_init != NULL) {
+            result = _shadowtorpreload_getWorker()->vtable.crypto_early_init();
         }
     } else {
-        if(_shadowtorpreload_getWorker()->tor.crypto_early_init != NULL) {
-            if (_shadowtorpreload_getWorker()->tor.crypto_seed_rng(1) < 0)
+        if(_shadowtorpreload_getWorker()->vtable.crypto_early_init != NULL) {
+            if (_shadowtorpreload_getWorker()->vtable.crypto_seed_rng(1) < 0)
               result = -1;
-            if (_shadowtorpreload_getWorker()->tor.crypto_init_siphash_key() < 0)
+            if (_shadowtorpreload_getWorker()->vtable.crypto_init_siphash_key() < 0)
               result = -1;
         }
     }
@@ -416,11 +400,11 @@ int crypto_global_init(int useAccel, const char *accelName, const char *accelDir
     gint result = 0;
     if(!shadowtorpreloadGlobalState.sslInitializedGlobal) {
         shadowtorpreloadGlobalState.sslInitializedGlobal = TRUE;
-        if(_shadowtorpreload_getWorker()->tor.tor_ssl_global_init) {
-            _shadowtorpreload_getWorker()->tor.tor_ssl_global_init();
+        if(_shadowtorpreload_getWorker()->vtable.tor_ssl_global_init) {
+            _shadowtorpreload_getWorker()->vtable.tor_ssl_global_init();
         }
-        if(_shadowtorpreload_getWorker()->tor.crypto_global_init) {
-            result = _shadowtorpreload_getWorker()->tor.crypto_global_init(useAccel, accelName, accelDir);
+        if(_shadowtorpreload_getWorker()->vtable.crypto_global_init) {
+            result = _shadowtorpreload_getWorker()->vtable.crypto_global_init(useAccel, accelName, accelDir);
         }
     }
 
@@ -433,8 +417,8 @@ int crypto_global_cleanup(void) {
 
     gint result = 0;
     if(--shadowtorpreloadGlobalState.nTorCryptoNodes == 0) {
-        if(_shadowtorpreload_getWorker()->tor.crypto_global_cleanup) {
-            result = _shadowtorpreload_getWorker()->tor.crypto_global_cleanup();
+        if(_shadowtorpreload_getWorker()->vtable.crypto_global_cleanup) {
+            result = _shadowtorpreload_getWorker()->vtable.crypto_global_cleanup();
         }
     }
 

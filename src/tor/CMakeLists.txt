@@ -140,15 +140,16 @@ aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 add_definitions(-DLOCALSTATEDIR="/usr/local/var" -DSHARE_DATADIR="/usr/local/var" -DBINDIR="/usr/local/bin")
 remove_definitions(-DNDEBUG)
 ## disable warnings from tor code
-add_cflags("-w")
+add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 
 ## create and install a shared library that can plug into shadow
 add_bitcode(shadow-plugin-tor-bitcode 
-    shadowtor-plugin.c shadowtor.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources} ${tortrunnel_sources} ${torexttrunnel_sources})
+    shadowtor-main.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources} ${tortrunnel_sources} ${torexttrunnel_sources})
 add_plugin(shadow-plugin-tor shadow-plugin-tor-bitcode)
+add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
-target_link_libraries(shadow-plugin-tor
-    ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
+target_link_libraries(shadow-plugin-tor shadow-preload-tor
+    ${TOR_LIBRARIES} -lpthread ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
     ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES})
 
 foreach(lib ${CMAKE_TOR_LIBRARIES})
