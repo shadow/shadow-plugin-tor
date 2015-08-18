@@ -25,70 +25,75 @@ const char tor_git_revision[] =
 #ifndef _MSC_VER
 #include "micro-revision.i"
 #endif
-  "";
+        "";
 
-static char* _shadowtor_get_formatted_arg_str(char* arg_str, const char* homedir_str, const char* hostname_str) {
-	char* found = NULL;
-	GString* sbuffer = g_string_new(arg_str);
+static char* _shadowtor_get_formatted_arg_str(char* arg_str,
+        const char* homedir_str, const char* hostname_str) {
+    char* found = NULL;
+    GString* sbuffer = g_string_new(arg_str);
 
-	/* replace all ~ with the home directory */
-	while((found = g_strstr_len(sbuffer->str, sbuffer->len, "~"))) {
-		ssize_t position = (ssize_t) (found - sbuffer->str);
-		sbuffer = g_string_erase(sbuffer, position, (ssize_t) 1);
-		sbuffer = g_string_insert(sbuffer, position, homedir_str);
-	}
+    /* replace all ~ with the home directory */
+    while ((found = g_strstr_len(sbuffer->str, sbuffer->len, "~"))) {
+        ssize_t position = (ssize_t) (found - sbuffer->str);
+        sbuffer = g_string_erase(sbuffer, position, (ssize_t) 1);
+        sbuffer = g_string_insert(sbuffer, position, homedir_str);
+    }
 
-	/* replace all ${NODEID} with the hostname */
-	while((found = g_strstr_len(sbuffer->str, sbuffer->len, "${NODEID}"))) {
-		ssize_t position = (ssize_t) (found - sbuffer->str);
-		sbuffer = g_string_erase(sbuffer, position, (ssize_t) 9);
-		sbuffer = g_string_insert(sbuffer, position, hostname_str);
-	}
+    /* replace all ${NODEID} with the hostname */
+    while ((found = g_strstr_len(sbuffer->str, sbuffer->len, "${NODEID}"))) {
+        ssize_t position = (ssize_t) (found - sbuffer->str);
+        sbuffer = g_string_erase(sbuffer, position, (ssize_t) 9);
+        sbuffer = g_string_insert(sbuffer, position, hostname_str);
+    }
 
-	return g_string_free(sbuffer, FALSE);
+    return g_string_free(sbuffer, FALSE);
 }
 
 static const char* _shadowtor_get_hostname_str() {
-	char hostname_buf[128];
-	memset(hostname_buf, 0, 128);
-	if(gethostname(&hostname_buf, 127) < 0) {
-		return NULL;
-	}
-	return strdup(hostname_buf);
+    char hostname_buf[128];
+    memset(hostname_buf, 0, 128);
+    if (gethostname(&hostname_buf, 127) < 0) {
+        return NULL;
+    }
+    return strdup(hostname_buf);
 }
 
 static const char* _shadowtor_get_homedir_str() {
-	return g_get_home_dir();
+    return g_get_home_dir();
 }
 
 int main(int argc, char *argv[]) {
-	/* get some basic info about this node */
-	const char* homedir_str = _shadowtor_get_homedir_str();
-	const char* hostname_str = _shadowtor_get_hostname_str();
-	int retval = -1;
+    /* get some basic info about this node */
+    const char* homedir_str = _shadowtor_get_homedir_str();
+    const char* hostname_str = _shadowtor_get_hostname_str();
+    int retval = -1;
 
-	if(homedir_str && hostname_str) {
-		/* convert special formatted arguments, like expanding '~' and '${NODEID}' */
-		char* formatted_args[argc];
-		memset(formatted_args, 0, sizeof(char*)*argc);
+    if (homedir_str && hostname_str) {
+        /* convert special formatted arguments, like expanding '~' and '${NODEID}' */
+        char* formatted_args[argc];
+        memset(formatted_args, 0, sizeof(char*) * argc);
 
-		for(int i = 0; i < argc; i++) {
+        for (int i = 0; i < argc; i++) {
             formatted_args[i] = _shadowtor_get_formatted_arg_str(argv[i], homedir_str, hostname_str);
-		}
+        }
 
-		/* launch tor! */
-		retval = tor_main(argc, formatted_args);
+        /* launch tor! */
+        retval = tor_main(argc, formatted_args);
 
-		for(int i = 0; i < argc; i++) {
-		    free(formatted_args[i]);
-		}
-	}
+        for (int i = 0; i < argc; i++) {
+            free(formatted_args[i]);
+        }
+    }
 
-	/* cleanup before return */
-	if(homedir_str) free(homedir_str);
-	if(hostname_str) free(hostname_str);
+    /* cleanup before return */
+    if (homedir_str) {
+        free(homedir_str);
+    }
+    if (hostname_str) {
+        free(hostname_str);
+    }
 
-	return retval;
+    return retval;
 }
 
 /* called immediately after the plugin is loaded. shadow loads plugins once for
@@ -100,7 +105,7 @@ const gchar* g_module_check_init(GModule *module) {
     int nLocks = CRYPTO_num_locks();
 
     /* initialize the preload lib, and its openssl thread handling */
-	shadowtorpreload_init(module, nLocks);
+    shadowtorpreload_init(module, nLocks);
 
     /* make sure openssl uses Shadow's random sources and make crypto thread-safe
      * get function pointers through LD_PRELOAD */
@@ -113,10 +118,10 @@ const gchar* g_module_check_init(GModule *module) {
     RAND_set_rand_method(shadowtor_randomMethod);
 
     /* make sure libevent uses pthreads (returns non-zero if error) */
-	int libe_error_code = evthread_use_pthreads();
+    int libe_error_code = evthread_use_pthreads();
 
-	/* success */
-	return NULL;
+    /* success */
+    return NULL;
 }
 
 /* called immediately after the plugin is unloaded. shadow unloads plugins
