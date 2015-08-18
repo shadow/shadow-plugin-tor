@@ -99,6 +99,7 @@ list(REMOVE_ITEM torcommon_sources
     ${TOR_ROOT_DIR}/src/common/sha256.c
     ${TOR_ROOT_DIR}/src/common/strlcat.c
     ${TOR_ROOT_DIR}/src/common/strlcpy.c
+    ${TOR_ROOT_DIR}/src/common/compat_winthreads.c
 )
 aux_source_directory(${TOR_ROOT_DIR}/src/ext torext_sources)
 list(REMOVE_ITEM torext_sources 
@@ -118,6 +119,7 @@ else()
         ${TOR_ROOT_DIR}/src/ext/curve25519_donna/curve25519-donna-c64.c
     )
 endif()
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/ref10 torexted_sources)
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel torexttrunnel_sources)
 aux_source_directory(${TOR_ROOT_DIR}/src/or toror_sources)
 list(REMOVE_ITEM toror_sources 
@@ -144,13 +146,15 @@ add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 
 ## create and install a shared library that can plug into shadow
 add_bitcode(shadow-plugin-tor-bitcode 
-    shadowtor-main.c ${toror_sources} ${torcommon_sources} ${torext_sources} ${torextcurve_sources} ${tortrunnel_sources} ${torexttrunnel_sources})
+    shadowtor-main.c ${toror_sources} ${torcommon_sources} 
+    ${torext_sources} ${torextcurve_sources} ${torexted_sources}
+    ${tortrunnel_sources} ${torexttrunnel_sources})
 add_plugin(shadow-plugin-tor shadow-plugin-tor-bitcode)
 add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
 target_link_libraries(shadow-plugin-tor shadow-preload-tor
-    ${TOR_LIBRARIES} -lpthread ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
-    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES})
+    ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
+    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
 
 foreach(lib ${CMAKE_TOR_LIBRARIES})
     target_link_libraries(shadow-plugin-tor ${lib})

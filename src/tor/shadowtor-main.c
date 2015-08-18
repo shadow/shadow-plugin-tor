@@ -9,9 +9,17 @@
 #include <glib.h>
 #include <gmodule.h>
 
+#define OPENSSL_THREAD_DEFINES
+#include <openssl/opensslconf.h>
+#include <openssl/crypto.h>
+
 extern int tor_main(int argc, char *argv[]);
-extern void shadowtorpreload_init(GModule*);
+extern void shadowtorpreload_init(GModule*, int);
 extern void shadowtorpreload_clear(void);
+extern const RAND_METHOD* RAND_get_rand_method();
+
+typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
+typedef unsigned long (*CRYPTO_id_func)(void);
 
 const char tor_git_revision[] =
 #ifndef _MSC_VER
@@ -62,12 +70,18 @@ int main(int argc, char *argv[]) {
 	if(homedir_str && hostname_str) {
 		/* convert special formatted arguments, like expanding '~' and '${NODEID}' */
 		char* formatted_args[argc];
+		memset(formatted_args, 0, sizeof(char*)*argc);
+
 		for(int i = 0; i < argc; i++) {
-			formatted_args[i] = _shadowtor_get_formatted_arg_str(argv[i], homedir_str, hostname_str);
+            formatted_args[i] = _shadowtor_get_formatted_arg_str(argv[i], homedir_str, hostname_str);
 		}
 
 		/* launch tor! */
-		retval = tor_main(argc, argv);
+		retval = tor_main(argc, formatted_args);
+
+		for(int i = 0; i < argc; i++) {
+		    free(formatted_args[i]);
+		}
 	}
 
 	/* cleanup before return */
@@ -82,7 +96,26 @@ int main(int argc, char *argv[]) {
  * symbol lookups.
  * return NULL for success, or a string describing the error */
 const gchar* g_module_check_init(GModule *module) {
-	shadowtorpreload_init(module);
+    /* how many locks does openssl want */
+    int nLocks = CRYPTO_num_locks();
+
+    /* initialize the preload lib, and its openssl thread handling */
+	shadowtorpreload_init(module, nLocks);
+
+    /* make sure openssl uses Shadow's random sources and make crypto thread-safe
+     * get function pointers through LD_PRELOAD */
+    const RAND_METHOD* shadowtor_randomMethod = RAND_get_rand_method();
+    CRYPTO_lock_func shadowtor_lockFunc = CRYPTO_get_locking_callback();
+    CRYPTO_id_func shadowtor_idFunc = CRYPTO_get_id_callback();
+
+    CRYPTO_set_locking_callback(shadowtor_lockFunc);
+    CRYPTO_set_id_callback(shadowtor_idFunc);
+    RAND_set_rand_method(shadowtor_randomMethod);
+
+    /* make sure libevent uses pthreads (returns non-zero if error) */
+	int libe_error_code = evthread_use_pthreads();
+
+	/* success */
 	return NULL;
 }
 

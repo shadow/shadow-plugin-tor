@@ -44,9 +44,6 @@ struct _PreloadWorker {
 	GModule* handle;
 	InterposeFuncs vtable;
 	int consensusCounter;
-	int opensslThreadSupport;
-	int libeventThreadSupport;
-	int libeventHasError;
 };
 
 /*
@@ -72,9 +69,6 @@ static PreloadWorker* _shadowtorpreload_getWorker() {
 /* forward declarations */
 static void _shadowtorpreload_cryptoSetup(int);
 static void _shadowtorpreload_cryptoTeardown();
-const RAND_METHOD* RAND_get_rand_method();
-typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
-typedef unsigned long (*CRYPTO_id_func)(void);
 
 /*
  * here we search and save pointers to the functions we need to call when
@@ -84,7 +78,7 @@ typedef unsigned long (*CRYPTO_id_func)(void);
  * not *node* dependent, only *thread* dependent.
  */
 
-void shadowtorpreload_init(GModule* handle) {
+void shadowtorpreload_init(GModule* handle, int nLocks) {
 	/* lookup all our required symbols in this worker's module, asserting success */
 	PreloadWorker* worker = _shadowtorpreload_getWorker();
 	worker->handle = handle;
@@ -101,42 +95,9 @@ void shadowtorpreload_init(GModule* handle) {
     g_module_symbol(handle, "crypto_seed_rng", (gpointer*)&(worker->vtable.crypto_seed_rng));
     g_module_symbol(handle, "crypto_init_siphash_key", (gpointer*)&(worker->vtable.crypto_init_siphash_key));
 
-    /* handle multi-threading support*/
-
-#define OPENSSL_THREAD_DEFINES
-#include <openssl/opensslconf.h>
-#if defined(OPENSSL_THREADS)
-    /* thread support enabled! how many locks does openssl want */
-    int nLocks = CRYPTO_num_locks();
-
-    /* now initialize our locking facilities, ensuring that this is only done once */
+    /* handle multi-threading support
+     * initialize our locking facilities, ensuring that this is only done once */
     _shadowtorpreload_cryptoSetup(nLocks);
-
-    /* make sure openssl uses Shadow's random sources and make crypto thread-safe
-     * get function pointers through LD_PRELOAD */
-    const RAND_METHOD* shadowtor_randomMethod = RAND_get_rand_method();
-    CRYPTO_lock_func shadowtor_lockFunc = CRYPTO_get_locking_callback();
-    CRYPTO_id_func shadowtor_idFunc = CRYPTO_get_id_callback();
-
-    CRYPTO_set_locking_callback(shadowtor_lockFunc);
-    CRYPTO_set_id_callback(shadowtor_idFunc);
-    RAND_set_rand_method(shadowtor_randomMethod);
-
-    worker->opensslThreadSupport = 1;
-#else
-    /* no thread support */
-    worker->opensslThreadSupport = 0;
-#endif
-
-    /* setup libevent locks */
-#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
-    worker->libeventThreadSupport = 1;
-    if(evthread_use_pthreads()) {
-    	worker->libeventHasError = 1;
-    }
-#else
-    worker->libeventThreadSupport = 0;
-#endif
 }
 
 void shadowtorpreload_clear() {
