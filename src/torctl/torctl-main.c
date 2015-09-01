@@ -4,24 +4,62 @@
 
 #include "torctl.h"
 
-/* our code only relies on the log part of shadowlib,
- * so we need to supply that implementation here since this is
- * running outside of shadow. */
-static void _mylog(ShadowLogLevel level, const char* functionName, const char* format, ...) {
-	va_list variableArguments;
-	va_start(variableArguments, format);
-	vprintf(format, variableArguments);
-	va_end(variableArguments);
-	printf("%s", "\n");
+#define TORCTL_LOG_DOMAIN "torctl"
+
+static const gchar* _torctlmain_logLevelToString(GLogLevelFlags logLevel) {
+    switch (logLevel) {
+        case G_LOG_LEVEL_ERROR:
+            return "error";
+        case G_LOG_LEVEL_CRITICAL:
+            return "critical";
+        case G_LOG_LEVEL_WARNING:
+            return "warning";
+        case G_LOG_LEVEL_MESSAGE:
+            return "message";
+        case G_LOG_LEVEL_INFO:
+            return "info";
+        case G_LOG_LEVEL_DEBUG:
+            return "debug";
+        default:
+            return "default";
+    }
 }
-#define mylog(...) _mylog(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, __VA_ARGS__)
+
+static void _torctlmain_logHandler(const gchar *logDomain, GLogLevelFlags logLevel,
+        const gchar *message, gpointer userData) {
+    g_print("%s\n", message);
+}
+
+static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, const gchar* format, ...) {
+    va_list vargs;
+    va_start(vargs, format);
+
+    GDateTime* dt = g_date_time_new_now_local();
+    GString* newformat = g_string_new(NULL);
+
+    g_string_append_printf(newformat, "%04i-%02i-%02i %02i:%02i:%02i %"G_GINT64_FORMAT".%06i [%s] [%s] %s",
+            g_date_time_get_year(dt), g_date_time_get_month(dt), g_date_time_get_day_of_month(dt),
+            g_date_time_get_hour(dt), g_date_time_get_minute(dt), g_date_time_get_second(dt),
+            g_date_time_to_unix(dt), g_date_time_get_microsecond(dt),
+            _torctlmain_logLevelToString(level), functionName, format);
+    g_logv(TORCTL_LOG_DOMAIN, level, newformat->str, vargs);
+
+    g_string_free(newformat, TRUE);
+    g_date_time_unref(dt);
+
+    va_end(vargs);
+}
+
+#define mylog(...) _torctlmain_log(G_LOG_LEVEL_INFO, __FUNCTION__, __VA_ARGS__)
 
 /* this main replaces the shd-torctl-plugin.c file to run outside of shadow */
 int main(int argc, char *argv[]) {
+    GLogLevelFlags allLevels = (G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION);
+    g_log_set_handler(TORCTL_LOG_DOMAIN, allLevels, _torctlmain_logHandler, NULL);
 	mylog("Starting torctl program");
 
 	/* create the new state according to user inputs */
-	TorCTL* torctlState = torctl_new(argc, argv, &_mylog);
+	TorCTL* torctlState = torctl_new(argc, argv, &_torctlmain_log);
 	if(!torctlState) {
 		mylog("Error initializing new TorCTL instance");
 		return -1;

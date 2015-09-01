@@ -16,12 +16,12 @@
 #include <netdb.h>
 #include <errno.h>
 
-#include <shd-library.h>
 #include <glib.h>
 
 typedef struct _TorCTL TorCTL;
+typedef void (*TorctlLogFunc)(GLogLevelFlags level, const char* functionName, const char* format, ...);
 
-TorCTL* torctl_new(gint argc, gchar* argv[], ShadowLogFunc slogf);
+TorCTL* torctl_new(gint argc, gchar* argv[], TorctlLogFunc slogf);
 void torctl_free(TorCTL* h);
 void torctl_ready(TorCTL* h);
 gint torctl_getEpollDescriptor(TorCTL* h);
