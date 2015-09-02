@@ -32,15 +32,15 @@ static char* _shadowtor_get_formatted_arg_str(char* arg_str,
     char* found = NULL;
     GString* sbuffer = g_string_new(arg_str);
 
-    /* replace all ~ with the home directory */
-    while ((found = g_strstr_len(sbuffer->str, sbuffer->len, "~"))) {
+    /* replace first ~ with the home directory */
+    if ((found = g_strstr_len(sbuffer->str, sbuffer->len, "~"))) {
         ssize_t position = (ssize_t) (found - sbuffer->str);
         sbuffer = g_string_erase(sbuffer, position, (ssize_t) 1);
         sbuffer = g_string_insert(sbuffer, position, homedir_str);
     }
 
-    /* replace all ${NODEID} with the hostname */
-    while ((found = g_strstr_len(sbuffer->str, sbuffer->len, "${NODEID}"))) {
+    /* replace first ${NODEID} with the hostname */
+    if ((found = g_strstr_len(sbuffer->str, sbuffer->len, "${NODEID}"))) {
         ssize_t position = (ssize_t) (found - sbuffer->str);
         sbuffer = g_string_erase(sbuffer, position, (ssize_t) 9);
         sbuffer = g_string_insert(sbuffer, position, hostname_str);
@@ -62,16 +62,16 @@ static const char* _shadowtor_get_homedir_str() {
     return g_get_home_dir();
 }
 
-int main(int argc, char *argv[]) {
+static int _shadowtor_run(int argc, char *argv[]) {
+    int retval = -1;
+
     /* get some basic info about this node */
     const char* homedir_str = _shadowtor_get_homedir_str();
     const char* hostname_str = _shadowtor_get_hostname_str();
-    int retval = -1;
 
     if (homedir_str && hostname_str) {
         /* convert special formatted arguments, like expanding '~' and '${NODEID}' */
-        char* formatted_args[argc];
-        memset(formatted_args, 0, sizeof(char*) * argc);
+        char** formatted_args = calloc(argc, sizeof(char*));
 
         for (int i = 0; i < argc; i++) {
             formatted_args[i] = _shadowtor_get_formatted_arg_str(argv[i], homedir_str, hostname_str);
@@ -83,6 +83,7 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < argc; i++) {
             free(formatted_args[i]);
         }
+        free(formatted_args);
     }
 
     /* cleanup before return */
@@ -94,6 +95,10 @@ int main(int argc, char *argv[]) {
     }
 
     return retval;
+}
+
+int main(int argc, char *argv[]) {
+    return _shadowtor_run(argc, argv);
 }
 
 /* called immediately after the plugin is loaded. shadow loads plugins once for
