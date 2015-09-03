@@ -27,6 +27,9 @@ static const gchar* _torctlmain_logLevelToString(GLogLevelFlags logLevel) {
 
 static void _torctlmain_logHandler(const gchar *logDomain, GLogLevelFlags logLevel,
         const gchar *message, gpointer userData) {
+    if(logLevel > G_LOG_LEVEL_INFO) {
+        return;
+    }
     g_print("%s\n", message);
 }
 
