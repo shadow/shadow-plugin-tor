@@ -5,11 +5,17 @@ for convenience. The Tor codebase is changing rapidly, and the
 configurations provided may produce significantly different
 results when using different Tor releases.
 
-Therefore, the configurations should not be considered
-accurate and may not be suitable for carrying out important
-Tor research without further validation.
+Although the configurations are useful for testing purposes,
+they should not be considered accurate and are likely not
+suitable for carrying out important Tor research.
 
 You have been warned. Use at your own risk.
 
-To create your own ShadowTor configurations, please see:
+We **strongly** recommend that you instead generate your own
+ShadowTor configurations using our existing tools. This will
+ensure not only that your private network is based on the most
+recent Tor network metrics, but also that you better understand
+how real data is used to model Tor.
+
+Instructions for generating a new ShadowTor configuration are here:
 https://github.com/shadow/shadow-plugin-tor/wiki#generating-a-new-tor-network
