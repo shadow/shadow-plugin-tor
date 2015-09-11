@@ -6,6 +6,8 @@
 
 #include <string.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <errno.h>
 #include <glib.h>
 #include <gmodule.h>
 
@@ -123,10 +125,14 @@ const gchar* g_module_check_init(GModule *module) {
     RAND_set_rand_method(shadowtor_randomMethod);
 
     /* make sure libevent uses pthreads (returns non-zero if error) */
-    int libe_error_code = evthread_use_pthreads();
-
-    /* success */
-    return NULL;
+    int libev_error_code = evthread_use_pthreads();
+    if(libev_error_code != 0) {
+        fprintf(stderr, "Error %i initializing libevent threading: %s\n", libev_error_code, strerror(errno));
+        return "Error initializing libevent threading";
+    } else {
+        /* success */
+        return NULL;
+    }
 }
 
 /* called immediately after the plugin is unloaded. shadow unloads plugins

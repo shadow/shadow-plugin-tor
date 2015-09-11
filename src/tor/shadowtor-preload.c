@@ -18,7 +18,7 @@
 #include "torlog.h"
 
 /* tor functions */
-typedef int (*spawn_func_fp)();
+typedef int (*spawn_func_fp)(void (*func)(void *), void *data);
 typedef int (*write_str_to_file_fp)(const char *, const char *, int);
 typedef int (*crypto_global_init_fp)(int, const char*, const char*);
 typedef int (*crypto_global_cleanup_fp)(void);
@@ -29,21 +29,21 @@ typedef void (*tor_ssl_global_init_fp)(void);
 
 typedef struct _InterposeFuncs InterposeFuncs;
 struct _InterposeFuncs {
-	spawn_func_fp spawn_func;
-	write_str_to_file_fp write_str_to_file;
-	crypto_global_init_fp crypto_global_init;
-	crypto_global_cleanup_fp crypto_global_cleanup;
+    spawn_func_fp spawn_func;
+    write_str_to_file_fp write_str_to_file;
+    crypto_global_init_fp crypto_global_init;
+    crypto_global_cleanup_fp crypto_global_cleanup;
     crypto_early_init_fp crypto_early_init;
     crypto_seed_rng_fp crypto_seed_rng;
     crypto_init_siphash_key_fp crypto_init_siphash_key;
-	tor_ssl_global_init_fp tor_ssl_global_init;
+    tor_ssl_global_init_fp tor_ssl_global_init;
 };
 
 typedef struct _PreloadWorker PreloadWorker;
 struct _PreloadWorker {
-	GModule* handle;
-	InterposeFuncs vtable;
-	int consensusCounter;
+    GModule* handle;
+    InterposeFuncs vtable;
+    int consensusCounter;
 };
 
 /*
@@ -55,20 +55,24 @@ struct _PreloadWorker {
 static GPrivate threadPreloadWorkerKey = G_PRIVATE_INIT(g_free);
 
 /* preload_init must be called before this so the worker gets created */
-static PreloadWorker* _shadowtorpreload_getWorker() {
-	/* get current thread's private worker object */
-	PreloadWorker* worker = g_private_get(&threadPreloadWorkerKey);
-	if(!worker) {
-	    worker = g_new0(PreloadWorker, 1);
+static PreloadWorker* _shadowtorpreload_getWorker(void) {
+    /* get current thread's private worker object */
+    PreloadWorker* worker = g_private_get(&threadPreloadWorkerKey);
+    if (!worker) {
+        worker = g_new0(PreloadWorker, 1);
         g_private_set(&threadPreloadWorkerKey, worker);
-	}
-	g_assert(worker);
-	return worker;
+    }
+    g_assert(worker);
+    return worker;
 }
+
+/* used to stop shadow from intercepting our glib locking mechanisms */
+extern void interposer_enable();
+extern void interposer_disable();
 
 /* forward declarations */
 static void _shadowtorpreload_cryptoSetup(int);
-static void _shadowtorpreload_cryptoTeardown();
+static void _shadowtorpreload_cryptoTeardown(void);
 
 /*
  * here we search and save pointers to the functions we need to call when
@@ -79,12 +83,12 @@ static void _shadowtorpreload_cryptoTeardown();
  */
 
 void shadowtorpreload_init(GModule* handle, int nLocks) {
-	/* lookup all our required symbols in this worker's module, asserting success */
-	PreloadWorker* worker = _shadowtorpreload_getWorker();
-	worker->handle = handle;
+    /* lookup all our required symbols in this worker's module, asserting success */
+    PreloadWorker* worker = _shadowtorpreload_getWorker();
+    worker->handle = handle;
 
-	/* tor function lookups */
-	g_assert(g_module_symbol(handle, "spawn_func", (gpointer*)&(worker->vtable.spawn_func)));
+    /* tor function lookups */
+    g_assert(g_module_symbol(handle, "spawn_func", (gpointer*)&(worker->vtable.spawn_func)));
     g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(worker->vtable.write_str_to_file)));
     g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->vtable.crypto_global_init)));
     g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->vtable.crypto_global_cleanup)));
@@ -100,7 +104,7 @@ void shadowtorpreload_init(GModule* handle, int nLocks) {
     _shadowtorpreload_cryptoSetup(nLocks);
 }
 
-void shadowtorpreload_clear() {
+void shadowtorpreload_clear(void) {
     /* the glib thread private worker is freed automatically */
     _shadowtorpreload_cryptoTeardown();
 }
@@ -111,40 +115,40 @@ void shadowtorpreload_clear() {
 
 /* tor family */
 
-int spawn_func(void (*func)(void *), void *data) {
-//    if(func == _shadowtorpreload_getWorker()->tor.cpuworker_main) {
-//        /* this takes the place of forking a cpuworker and running cpuworker_main.
-//         * func points to cpuworker_main, but we'll implement a version that
-//         * works in shadow */
-//        int *fdarray = data;
-//        int fd = fdarray[1]; /* this side is ours */
-//
-//        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newCPUWorker(fd);
-//
-//        /* now we should be ready to receive events in vtor_cpuworker_readable */
-//        return 0;
-//    } else if(_shadowtorpreload_getWorker()->tor.sockmgr_thread_main != NULL &&
-//            func == _shadowtorpreload_getWorker()->tor.sockmgr_thread_main) {
-//        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newSockMgrWorker();
-//        return 0;
-//    }
-    return -1;
-}
+//int spawn_func(void (*func)(void *), void *data) {
+////    if(func == _shadowtorpreload_getWorker()->tor.cpuworker_main) {
+////        /* this takes the place of forking a cpuworker and running cpuworker_main.
+////         * func points to cpuworker_main, but we'll implement a version that
+////         * works in shadow */
+////        int *fdarray = data;
+////        int fd = fdarray[1]; /* this side is ours */
+////
+////        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newCPUWorker(fd);
+////
+////        /* now we should be ready to receive events in vtor_cpuworker_readable */
+////        return 0;
+////    } else if(_shadowtorpreload_getWorker()->tor.sockmgr_thread_main != NULL &&
+////            func == _shadowtorpreload_getWorker()->tor.sockmgr_thread_main) {
+////        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newSockMgrWorker();
+////        return 0;
+////    }
+//    return -1;
+//}
 
 int write_str_to_file(const char *fname, const char *str, int bin) {
-	/* check if filepath is a consenus file. store it in separate files
-	 * so we don't lose old consenus info on overwrites. */
-	if(g_str_has_suffix(fname, "cached-consensus")) {
-	//if(g_strrstr(filepath, "cached-consensus") != NULL) {
-		GString* newPath = g_string_new(fname);
-		GError* error = NULL;
-		g_string_append_printf(newPath, ".%03i", _shadowtorpreload_getWorker()->consensusCounter++);
-		if(!g_file_set_contents(newPath->str, str, -1, &error)) {
-			log_warn(LD_GENERAL,"Error writing file '%s' to track consensus update: error %i: %s",
-					newPath->str, error->code, error->message);
-		}
-		g_string_free(newPath, TRUE);
-	}
+    /* check if filepath is a consenus file. store it in separate files
+     * so we don't lose old consenus info on overwrites. */
+    if (g_str_has_suffix(fname, "cached-consensus")) {
+        //if(g_strrstr(filepath, "cached-consensus") != NULL) {
+        GString* newPath = g_string_new(fname);
+        GError* error = NULL;
+        g_string_append_printf(newPath, ".%03i", _shadowtorpreload_getWorker()->consensusCounter++);
+        if (!g_file_set_contents(newPath->str, str, -1, &error)) {
+            log_warn(LD_GENERAL, "Error writing file '%s' to track consensus update: error %i: %s",
+                    newPath->str, error->code, error->message);
+        }
+        g_string_free(newPath, TRUE);
+    }
 
     return _shadowtorpreload_getWorker()->vtable.write_str_to_file(fname, str, bin);
 }
@@ -263,11 +267,11 @@ int RAND_pseudo_bytes(unsigned char *buf, int num) {
     return _shadowtorpreload_getRandomBytes(buf, num);
 }
 
-void RAND_cleanup() {
+void RAND_cleanup(void) {
     return;
 }
 
-int RAND_status() {
+int RAND_status(void) {
     return 1;
 }
 
@@ -312,6 +316,9 @@ RAND_METHOD* RAND_SSLeay() {
  * for thread safety, it is not initialized multiple times, etc.
  */
 typedef struct _PreloadGlobal PreloadGlobal;
+
+/* !!WARNING - do not change this struct without updating the initialization
+ * of shadowtorpreloadGlobalState that is done right below it!! */
 struct _PreloadGlobal {
     gboolean initialized;
     gboolean sslInitializedEarly;
@@ -322,17 +329,20 @@ struct _PreloadGlobal {
     GRWLock* cryptoThreadLocks;
 };
 
+PreloadGlobal shadowtorpreloadGlobalState = {FALSE, FALSE, FALSE, 0, 0, 0, NULL};
 G_LOCK_DEFINE_STATIC(shadowtorpreloadPrimaryLock);
 G_LOCK_DEFINE_STATIC(shadowtorpreloadSecondaryLock);
-PreloadGlobal shadowtorpreloadGlobalState = {FALSE, 0, 0, 0, NULL};
 
 /**
  * these init and cleanup Tor functions are called to handle openssl.
  * they must be globally locked and only called once globally to avoid openssl errors.
  */
 
-int crypto_early_init() {
+int crypto_early_init(void) {
+    interposer_disable();
     G_LOCK(shadowtorpreloadSecondaryLock);
+    interposer_enable();
+
     gint result = 0;
 
     if(!shadowtorpreloadGlobalState.sslInitializedEarly) {
@@ -349,12 +359,16 @@ int crypto_early_init() {
         }
     }
 
-	G_UNLOCK(shadowtorpreloadSecondaryLock);
+    interposer_disable();
+    G_UNLOCK(shadowtorpreloadSecondaryLock);
+    interposer_enable();
     return result;
 }
 
 int crypto_global_init(int useAccel, const char *accelName, const char *accelDir) {
+    interposer_disable();
     G_LOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
 
     shadowtorpreloadGlobalState.nTorCryptoNodes++;
 
@@ -369,12 +383,16 @@ int crypto_global_init(int useAccel, const char *accelName, const char *accelDir
         }
     }
 
+    interposer_disable();
     G_UNLOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
     return result;
 }
 
 int crypto_global_cleanup(void) {
+    interposer_disable();
     G_LOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
 
     gint result = 0;
     if(--shadowtorpreloadGlobalState.nTorCryptoNodes == 0) {
@@ -383,7 +401,9 @@ int crypto_global_cleanup(void) {
         }
     }
 
+    interposer_disable();
     G_UNLOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
     return result;
 }
 
@@ -391,7 +411,7 @@ void tor_ssl_global_init() {
     // do nothing, we initialized openssl above in crypto_global_init
 }
 
-static unsigned long _shadowtorpreload_getIDFunc() {
+static unsigned long _shadowtorpreload_getIDFunc(void) {
     /* return an ID that is unique for each thread */
     return (unsigned long)(_shadowtorpreload_getWorker());
 }
@@ -406,6 +426,7 @@ static void _shadowtorpreload_cryptoLockingFunc(int mode, int n, const char *fil
     GRWLock* lock = &(shadowtorpreloadGlobalState.cryptoThreadLocks[n]);
     assert(lock);
 
+    interposer_disable();
     if(mode & CRYPTO_LOCK) {
         if(mode & CRYPTO_READ) {
             g_rw_lock_reader_lock(lock);
@@ -419,6 +440,7 @@ static void _shadowtorpreload_cryptoLockingFunc(int mode, int n, const char *fil
             g_rw_lock_writer_unlock(lock);
         }
     }
+    interposer_enable();
 }
 
 void (*CRYPTO_get_locking_callback(void))(int mode,int type,const char *file,
@@ -427,6 +449,7 @@ void (*CRYPTO_get_locking_callback(void))(int mode,int type,const char *file,
 }
 
 static void _shadowtorpreload_cryptoSetup(int numLocks) {
+    interposer_disable();
     G_LOCK(shadowtorpreloadPrimaryLock);
 
     if(!shadowtorpreloadGlobalState.initialized) {
@@ -443,9 +466,11 @@ static void _shadowtorpreload_cryptoSetup(int numLocks) {
     shadowtorpreloadGlobalState.nThreads++;
 
     G_UNLOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
 }
 
-static void _shadowtorpreload_cryptoTeardown() {
+static void _shadowtorpreload_cryptoTeardown(void) {
+    interposer_disable();
     G_LOCK(shadowtorpreloadPrimaryLock);
 
     if(shadowtorpreloadGlobalState.initialized &&
@@ -462,6 +487,7 @@ static void _shadowtorpreload_cryptoTeardown() {
     }
 
     G_UNLOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
 }
 
 /********************************************************************************

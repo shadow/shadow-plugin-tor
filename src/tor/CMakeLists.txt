@@ -101,6 +101,7 @@ list(REMOVE_ITEM torcommon_sources
     ${TOR_ROOT_DIR}/src/common/strlcpy.c
     ${TOR_ROOT_DIR}/src/common/compat_winthreads.c
 )
+
 aux_source_directory(${TOR_ROOT_DIR}/src/ext torext_sources)
 list(REMOVE_ITEM torext_sources 
     ${TOR_ROOT_DIR}/src/ext/OpenBSD_malloc_Linux.c
@@ -109,6 +110,7 @@ list(REMOVE_ITEM torext_sources
     ${TOR_ROOT_DIR}/src/ext/tinytest.c
     ${TOR_ROOT_DIR}/src/ext/tinytest_demo.c
 )
+
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/curve25519_donna torextcurve_sources)
 if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "x86_64")
     list(REMOVE_ITEM torextcurve_sources
@@ -119,19 +121,24 @@ else()
         ${TOR_ROOT_DIR}/src/ext/curve25519_donna/curve25519-donna-c64.c
     )
 endif()
+
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/ref10 torextedref_sources)
-set(torexteddon_sources ${TOR_ROOT_DIR}/src/ext/ed25519/donna/ed25519_tor.c)
-#aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/donna torexteddon_sources)
-#list(REMOVE_ITEM torexteddon_sources 
-#    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test.c
-#    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test-internals.c
-#)
+
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/donna torexteddon_sources)
+list(REMOVE_ITEM torexteddon_sources 
+     ${TOR_ROOT_DIR}/src/ext/ed25519/donna/ed25519.c
+    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test.c
+    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test-internals.c
+)
+
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel torexttrunnel_sources)
+
 aux_source_directory(${TOR_ROOT_DIR}/src/or toror_sources)
 list(REMOVE_ITEM toror_sources 
     ${TOR_ROOT_DIR}/src/or/ntmain.c
     ${TOR_ROOT_DIR}/src/or/tor_main.c
 )
+
 aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 
 ## get tor header files -- we dont need this for now
@@ -148,14 +155,15 @@ aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 add_definitions(-DLOCALSTATEDIR="/usr/local/var" -DSHARE_DATADIR="/usr/local/var" -DBINDIR="/usr/local/bin")
 add_definitions(-DED25519_CUSTOMRANDOM -DED25519_SUFFIX=_donna)
 remove_definitions(-DNDEBUG)
-## disable warnings from tor code
+
+## disable warnings from tor code, add other options
 add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
+
 ## create and install a shared library that can plug into shadow
-add_bitcode(shadow-plugin-tor-bitcode 
+add_shadow_plugin(shadow-plugin-tor 
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
     ${tortrunnel_sources} ${torexttrunnel_sources})
-add_plugin(shadow-plugin-tor shadow-plugin-tor-bitcode)
 add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
 target_link_libraries(shadow-plugin-tor shadow-preload-tor

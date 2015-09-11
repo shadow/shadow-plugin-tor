@@ -9,7 +9,7 @@ include_directories(AFTER ${GLIB_INCLUDES})
 ## plug-ins need to disable fortification to ensure syscalls are intercepted
 add_cflags("-fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 
-## create and install a dynamic executable that can plug into shadow
+## create and install a dynamic library that can plug into shadow
 add_shadow_plugin(shadow-plugin-torctl torctl-main.c torctl.c)
 target_link_libraries(shadow-plugin-torctl ${GLIB_LIBRARIES})
 install(TARGETS shadow-plugin-torctl DESTINATION plugins)
