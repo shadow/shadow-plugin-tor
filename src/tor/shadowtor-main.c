@@ -124,7 +124,8 @@ const gchar* g_module_check_init(GModule *module) {
     CRYPTO_set_id_callback(shadowtor_idFunc);
     RAND_set_rand_method(shadowtor_randomMethod);
 
-    /* make sure libevent uses pthreads (returns non-zero if error) */
+    /* make sure libevent is thread-safe (returns non-zero if error)
+     * the preload library will intercept and properly handling ids, locks and conditions */
     int libev_error_code = evthread_use_pthreads();
     if(libev_error_code != 0) {
         fprintf(stderr, "Error %i initializing libevent threading: %s\n", libev_error_code, strerror(errno));

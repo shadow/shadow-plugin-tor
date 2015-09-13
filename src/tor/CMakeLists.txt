@@ -179,7 +179,7 @@ set_target_properties(shadow-plugin-tor PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL
 
 ## preload library for intercepting functions
 add_library(shadow-preload-tor SHARED shadowtor-preload.c)
-target_link_libraries(shadow-preload-tor ${GLIB_LIBRARIES} ${DL_LIBRARIES})
+target_link_libraries(shadow-preload-tor ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${DL_LIBRARIES})
 install(TARGETS shadow-preload-tor DESTINATION lib)
 
 ## install run script

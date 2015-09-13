@@ -4,12 +4,18 @@
  * See LICENSE for licensing information
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <dlfcn.h>
+
 #include <sys/time.h>
 #include <stdint.h>
 #include <stdarg.h>
 #include <assert.h>
 
 #include <event2/dns.h>
+#include <event2/thread.h>
 #include <openssl/crypto.h>
 
 #include <glib.h>
@@ -27,6 +33,11 @@ typedef int (*crypto_seed_rng_fp)(int);
 typedef int (*crypto_init_siphash_key_fp)(void);
 typedef void (*tor_ssl_global_init_fp)(void);
 
+/* libevent threading */
+typedef void (*evthread_set_id_callback_fp)(unsigned long (*id_fn)(void));
+typedef int (*evthread_set_lock_callbacks_fp)(const struct evthread_lock_callbacks *cbs);
+typedef int (*evthread_set_condition_callbacks_fp)(const struct evthread_condition_callbacks *cbs);
+
 typedef struct _InterposeFuncs InterposeFuncs;
 struct _InterposeFuncs {
     spawn_func_fp spawn_func;
@@ -37,6 +48,10 @@ struct _InterposeFuncs {
     crypto_seed_rng_fp crypto_seed_rng;
     crypto_init_siphash_key_fp crypto_init_siphash_key;
     tor_ssl_global_init_fp tor_ssl_global_init;
+
+    evthread_set_id_callback_fp evthread_set_id_callback;
+    evthread_set_lock_callbacks_fp evthread_set_lock_callbacks;
+    evthread_set_condition_callbacks_fp evthread_set_condition_callbacks;
 };
 
 typedef struct _PreloadWorker PreloadWorker;
@@ -66,14 +81,13 @@ static PreloadWorker* _shadowtorpreload_getWorker(void) {
     return worker;
 }
 
-/* used to stop shadow from intercepting our glib locking mechanisms */
+/* used to stop shadow from intercepting our thread locking mechanisms */
 extern void interposer_enable();
 extern void interposer_disable();
 
 /* forward declarations */
 static void _shadowtorpreload_cryptoSetup(int);
 static void _shadowtorpreload_cryptoTeardown(void);
-
 /*
  * here we search and save pointers to the functions we need to call when
  * we intercept tor's functions. this is initialized for each thread, and each
@@ -93,6 +107,10 @@ void shadowtorpreload_init(GModule* handle, int nLocks) {
     g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->vtable.crypto_global_init)));
     g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->vtable.crypto_global_cleanup)));
     g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->vtable.tor_ssl_global_init)));
+
+    g_assert((worker->vtable.evthread_set_id_callback = dlsym(RTLD_NEXT, "evthread_set_id_callback")) != NULL);
+    g_assert((worker->vtable.evthread_set_lock_callbacks = dlsym(RTLD_NEXT, "evthread_set_lock_callbacks")) != NULL);
+    g_assert((worker->vtable.evthread_set_condition_callbacks = dlsym(RTLD_NEXT, "evthread_set_condition_callbacks")) != NULL);
 
     /* these do not exist in all Tors, so don't assert success */
     g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->vtable.crypto_early_init));
@@ -301,7 +319,7 @@ RAND_METHOD* RAND_SSLeay() {
 
 
 /********************************************************************************
- * the code below provides support for multi-threaded openssl.
+ * the code below provides support for multi-threaded openssl and libevent.
  * we need global state here to manage locking for all threads, so we use the
  * preload library because the symbols here do not get hoisted and copied
  * for each instance of the plug-in.
@@ -327,11 +345,172 @@ struct _PreloadGlobal {
     gint nThreads;
     gint numCryptoThreadLocks;
     GRWLock* cryptoThreadLocks;
+
+    unsigned long (*libevent_id_fn)(void);
+    struct evthread_lock_callbacks libevent_lock_fns;
+    struct evthread_condition_callbacks libevent_cond_fns;
 };
 
-PreloadGlobal shadowtorpreloadGlobalState = {FALSE, FALSE, FALSE, 0, 0, 0, NULL};
+PreloadGlobal shadowtorpreloadGlobalState = {FALSE, FALSE, FALSE, 0, 0, 0, NULL,
+        NULL, 0, 0, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL};
 G_LOCK_DEFINE_STATIC(shadowtorpreloadPrimaryLock);
 G_LOCK_DEFINE_STATIC(shadowtorpreloadSecondaryLock);
+G_LOCK_DEFINE_STATIC(shadowtorpreloadTrenaryLock);
+
+/*
+ * here we wrap the libevent thread funcs to make sure that the libevent
+ * global library state is locked with the real pthread and shadow doesnt interfere
+ */
+
+static unsigned long _shadowtorpreload_libevent_id() {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_id_fn);
+    unsigned long ret = shadowtorpreloadGlobalState.libevent_id_fn();
+    interposer_enable();
+    return ret;
+}
+
+static void* _shadowtorpreload_libevent_lock_alloc(unsigned locktype) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_lock_fns.alloc);
+    void* ret = shadowtorpreloadGlobalState.libevent_lock_fns.alloc(locktype);
+    interposer_enable();
+    return ret;
+}
+
+static void _shadowtorpreload_libevent_lock_free(void *lock, unsigned locktype) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_lock_fns.free);
+    shadowtorpreloadGlobalState.libevent_lock_fns.free(lock, locktype);
+    interposer_enable();
+}
+
+static int _shadowtorpreload_libevent_lock_lock(unsigned mode, void *lock) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_lock_fns.lock);
+    int ret = shadowtorpreloadGlobalState.libevent_lock_fns.lock(mode, lock);
+    interposer_enable();
+    return ret;
+}
+
+static int _shadowtorpreload_libevent_lock_unlock(unsigned mode, void *lock) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_lock_fns.unlock);
+    int ret = shadowtorpreloadGlobalState.libevent_lock_fns.unlock(mode, lock);
+    interposer_enable();
+    return ret;
+}
+
+static void* _shadowtorpreload_libevent_cond_alloc(unsigned condtype) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_cond_fns.alloc_condition);
+    void* ret = shadowtorpreloadGlobalState.libevent_cond_fns.alloc_condition(condtype);
+    interposer_enable();
+    return ret;
+}
+
+static void _shadowtorpreload_libevent_cond_free(void *cond) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_cond_fns.free_condition);
+    shadowtorpreloadGlobalState.libevent_cond_fns.free_condition(cond);
+    interposer_enable();
+}
+
+static int _shadowtorpreload_libevent_cond_signal(void *cond, int broadcast) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_cond_fns.signal_condition);
+    int ret = shadowtorpreloadGlobalState.libevent_cond_fns.signal_condition(cond, broadcast);
+    interposer_enable();
+    return ret;
+}
+
+static int _shadowtorpreload_libevent_cond_wait(void *cond, void *lock, const struct timeval *timeout) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.libevent_cond_fns.wait_condition);
+    int ret = shadowtorpreloadGlobalState.libevent_cond_fns.wait_condition(cond, lock, timeout);
+    interposer_enable();
+    return ret;
+}
+
+/*
+ * the next libevent functions store the necessary state and set up the wrappers.
+ * the libevent funcs are looked up late here using dlsym, because we dont have
+ * the handle that we had for the tor module lookups, and we are assured that
+ * by the time these funcs are called by libevent, libevent.so has been loaded and
+ * therefore we are guaranteed to find the evthread symbols.
+ */
+
+void evthread_set_id_callback(unsigned long (*id_fn)(void)) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+
+    if(!shadowtorpreloadGlobalState.libevent_id_fn && id_fn) {
+        shadowtorpreloadGlobalState.libevent_id_fn = id_fn;
+
+        g_assert(_shadowtorpreload_getWorker()->vtable.evthread_set_id_callback != NULL);
+        _shadowtorpreload_getWorker()->vtable.evthread_set_id_callback(_shadowtorpreload_libevent_id);
+    }
+
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+}
+
+int evthread_set_lock_callbacks(const struct evthread_lock_callbacks *cbs) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+
+    int ret = 0;
+    if(!shadowtorpreloadGlobalState.libevent_lock_fns.alloc && cbs) {
+        shadowtorpreloadGlobalState.libevent_lock_fns.alloc = cbs->alloc;
+        shadowtorpreloadGlobalState.libevent_lock_fns.free = cbs->free;
+        shadowtorpreloadGlobalState.libevent_lock_fns.lock = cbs->lock;
+        shadowtorpreloadGlobalState.libevent_lock_fns.unlock = cbs->unlock;
+
+        struct evthread_lock_callbacks libevent_lock_wrappers;
+        memset(&libevent_lock_wrappers, 0, sizeof(struct evthread_lock_callbacks));
+        libevent_lock_wrappers.lock_api_version = cbs->lock_api_version;
+        libevent_lock_wrappers.supported_locktypes = cbs->supported_locktypes;
+        libevent_lock_wrappers.alloc = _shadowtorpreload_libevent_lock_alloc;
+        libevent_lock_wrappers.free = _shadowtorpreload_libevent_lock_free;
+        libevent_lock_wrappers.lock = _shadowtorpreload_libevent_lock_lock;
+        libevent_lock_wrappers.unlock = _shadowtorpreload_libevent_lock_unlock;
+
+        g_assert(_shadowtorpreload_getWorker()->vtable.evthread_set_lock_callbacks != NULL);
+        ret = _shadowtorpreload_getWorker()->vtable.evthread_set_lock_callbacks(&libevent_lock_wrappers);
+    }
+
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+    return ret;
+}
+
+int evthread_set_condition_callbacks(const struct evthread_condition_callbacks *cbs) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+
+    int ret = 0;
+    if(!shadowtorpreloadGlobalState.libevent_cond_fns.alloc_condition && cbs) {
+        shadowtorpreloadGlobalState.libevent_cond_fns.alloc_condition = cbs->alloc_condition;
+        shadowtorpreloadGlobalState.libevent_cond_fns.free_condition = cbs->free_condition;
+        shadowtorpreloadGlobalState.libevent_cond_fns.signal_condition = cbs->signal_condition;
+        shadowtorpreloadGlobalState.libevent_cond_fns.wait_condition = cbs->wait_condition;
+
+        struct evthread_condition_callbacks libevent_cond_wrappers;
+        memset(&libevent_cond_wrappers, 0, sizeof(struct evthread_condition_callbacks));
+        libevent_cond_wrappers.condition_api_version = cbs->condition_api_version;
+        libevent_cond_wrappers.alloc_condition = _shadowtorpreload_libevent_cond_alloc;
+        libevent_cond_wrappers.free_condition = _shadowtorpreload_libevent_cond_free;
+        libevent_cond_wrappers.signal_condition = _shadowtorpreload_libevent_cond_signal;
+        libevent_cond_wrappers.wait_condition = _shadowtorpreload_libevent_cond_wait;
+
+        g_assert(_shadowtorpreload_getWorker()->vtable.evthread_set_condition_callbacks != NULL);
+        ret = _shadowtorpreload_getWorker()->vtable.evthread_set_condition_callbacks(&libevent_cond_wrappers);
+    }
+
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+    return ret;
+}
 
 /**
  * these init and cleanup Tor functions are called to handle openssl.
@@ -491,5 +670,5 @@ static void _shadowtorpreload_cryptoTeardown(void) {
 }
 
 /********************************************************************************
- * end code that supports multi-threaded openssl.
+ * end code that supports multi-threaded openssl and libevent.
  ********************************************************************************/
