@@ -59,7 +59,11 @@ static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, con
 int main(int argc, char *argv[]) {
     GLogLevelFlags allLevels = (G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION);
     g_log_set_handler(TORCTL_LOG_DOMAIN, allLevels, _torctlmain_logHandler, NULL);
-	mylog("Starting torctl program");
+
+    gchar hostname[128];
+    memset(hostname, 0, 128);
+    gethostname(hostname, 128);
+	mylog("Starting torctl program on host %s", hostname);
 
 	/* create the new state according to user inputs */
 	TorCTL* torctlState = torctl_new(argc, argv, &_torctlmain_log);
