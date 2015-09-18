@@ -109,8 +109,11 @@ def run(args):
         name_count += 1
         d['nodes'][name] = data
         boot_succeeded = item[2]
-        if boot_succeeded: success_count += 1
-        else: error_count += 1
+        if boot_succeeded:
+            success_count += 1
+        else:
+            error_count += 1
+            print >> sys.stderr, "warning: tor running on host '{0}' did not fully bootstrap".format(name)
         total_read += item[3]
         total_write += item[4]
 
