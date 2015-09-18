@@ -404,7 +404,7 @@ def setup_tor(args):
     retcode = 0
 
     # Copy patch and static symbol converter scripts to the build directory
-    shutil.copy("../tools/patch.sh", args.tordir)
+    #shutil.copy("../tools/patch.sh", args.tordir)
 
     # if we already configured successfully, dont patch or re-configure
     if os.path.exists(args.tordir):
@@ -447,10 +447,10 @@ def setup_tor(args):
             
             # need to patch AFTER generating configure to avoid overwriting the patched configure
             # patch static variables/functions
-            patch = "./patch.sh"
-            logging.info("running \'{0}\'".format(patch))
-            retcode = subprocess.call(shlex.split(patch))
-            if retcode !=0: return retcode
+            #patch = "./patch.sh"
+            #logging.info("running \'{0}\'".format(patch))
+            #retcode = subprocess.call(shlex.split(patch))
+            #if retcode !=0: return retcode
             
             # configure
             logging.info("running \'{0}\'".format(configure))
