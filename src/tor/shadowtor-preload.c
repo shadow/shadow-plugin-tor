@@ -24,7 +24,7 @@
 #include "torlog.h"
 
 /* tor functions */
-typedef int (*spawn_func_fp)(void (*func)(void *), void *data);
+typedef int (*tor_init_fp)(int argc, char *argv[]);
 typedef int (*write_str_to_file_fp)(const char *, const char *, int);
 typedef int (*crypto_global_init_fp)(int, const char*, const char*);
 typedef int (*crypto_global_cleanup_fp)(void);
@@ -38,9 +38,16 @@ typedef void (*evthread_set_id_callback_fp)(unsigned long (*id_fn)(void));
 typedef int (*evthread_set_lock_callbacks_fp)(const struct evthread_lock_callbacks *cbs);
 typedef int (*evthread_set_condition_callbacks_fp)(const struct evthread_condition_callbacks *cbs);
 
+/* openssl threading */
+typedef void (*CRYPTO_set_id_callback_fp)(unsigned long (*func)(void));
+typedef void (*CRYPTO_set_locking_callback_fp)(void (*func)(int mode,int type, const char *file,int line));
+typedef void (*CRYPTO_set_dynlock_create_callback_fp)(struct CRYPTO_dynlock_value *(*dyn_create_function)(const char *file, int line));
+typedef void (*CRYPTO_set_dynlock_lock_callback_fp)(void (*dyn_lock_function)(int mode, struct CRYPTO_dynlock_value *l, const char *file, int line));
+typedef void (*CRYPTO_set_dynlock_destroy_callback_fp)(void (*dyn_destroy_function)(struct CRYPTO_dynlock_value *l, const char *file, int line));
+
 typedef struct _InterposeFuncs InterposeFuncs;
 struct _InterposeFuncs {
-    spawn_func_fp spawn_func;
+    tor_init_fp tor_init;
     write_str_to_file_fp write_str_to_file;
     crypto_global_init_fp crypto_global_init;
     crypto_global_cleanup_fp crypto_global_cleanup;
@@ -52,6 +59,12 @@ struct _InterposeFuncs {
     evthread_set_id_callback_fp evthread_set_id_callback;
     evthread_set_lock_callbacks_fp evthread_set_lock_callbacks;
     evthread_set_condition_callbacks_fp evthread_set_condition_callbacks;
+
+    CRYPTO_set_id_callback_fp CRYPTO_set_id_callback;
+    CRYPTO_set_locking_callback_fp CRYPTO_set_locking_callback;
+    CRYPTO_set_dynlock_create_callback_fp CRYPTO_set_dynlock_create_callback;
+    CRYPTO_set_dynlock_lock_callback_fp CRYPTO_set_dynlock_lock_callback;
+    CRYPTO_set_dynlock_destroy_callback_fp CRYPTO_set_dynlock_destroy_callback;
 };
 
 typedef struct _PreloadWorker PreloadWorker;
@@ -102,15 +115,23 @@ void shadowtorpreload_init(GModule* handle, int nLocks) {
     worker->handle = handle;
 
     /* tor function lookups */
-    g_assert(g_module_symbol(handle, "spawn_func", (gpointer*)&(worker->vtable.spawn_func)));
+    g_assert(g_module_symbol(handle, "tor_init", (gpointer*)&(worker->vtable.tor_init)));
     g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(worker->vtable.write_str_to_file)));
     g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->vtable.crypto_global_init)));
     g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->vtable.crypto_global_cleanup)));
     g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->vtable.tor_ssl_global_init)));
 
+    /* libevent thread setup */
     g_assert((worker->vtable.evthread_set_id_callback = dlsym(RTLD_NEXT, "evthread_set_id_callback")) != NULL);
     g_assert((worker->vtable.evthread_set_lock_callbacks = dlsym(RTLD_NEXT, "evthread_set_lock_callbacks")) != NULL);
     g_assert((worker->vtable.evthread_set_condition_callbacks = dlsym(RTLD_NEXT, "evthread_set_condition_callbacks")) != NULL);
+
+    /* openssl thread setup */
+    g_assert((worker->vtable.CRYPTO_set_id_callback = dlsym(RTLD_NEXT, "CRYPTO_set_id_callback")) != NULL);
+    g_assert((worker->vtable.CRYPTO_set_locking_callback = dlsym(RTLD_NEXT, "CRYPTO_set_locking_callback")) != NULL);
+    g_assert((worker->vtable.CRYPTO_set_dynlock_create_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_create_callback")) != NULL);
+    g_assert((worker->vtable.CRYPTO_set_dynlock_lock_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_lock_callback")) != NULL);
+    g_assert((worker->vtable.CRYPTO_set_dynlock_destroy_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_destroy_callback")) != NULL);
 
     /* these do not exist in all Tors, so don't assert success */
     g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->vtable.crypto_early_init));
@@ -133,25 +154,20 @@ void shadowtorpreload_clear(void) {
 
 /* tor family */
 
-//int spawn_func(void (*func)(void *), void *data) {
-////    if(func == _shadowtorpreload_getWorker()->tor.cpuworker_main) {
-////        /* this takes the place of forking a cpuworker and running cpuworker_main.
-////         * func points to cpuworker_main, but we'll implement a version that
-////         * works in shadow */
-////        int *fdarray = data;
-////        int fd = fdarray[1]; /* this side is ours */
-////
-////        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newCPUWorker(fd);
-////
-////        /* now we should be ready to receive events in vtor_cpuworker_readable */
-////        return 0;
-////    } else if(_shadowtorpreload_getWorker()->tor.sockmgr_thread_main != NULL &&
-////            func == _shadowtorpreload_getWorker()->tor.sockmgr_thread_main) {
-////        _shadowtorpreload_getWorker()->shadowtor.shadowtor_newSockMgrWorker();
-////        return 0;
-////    }
-//    return -1;
-//}
+/* this is a hack to ensure only one tor node is initializing at a time,
+ * until we can find the race condition that occurs when running shadow
+ * with multiple worker threads. */
+G_LOCK_DEFINE_STATIC(shadowtorpreloadTorInitLock);
+int tor_init(int argc, char *argv[]) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTorInitLock);
+    interposer_enable();
+    int ret = _shadowtorpreload_getWorker()->vtable.tor_init(argc, argv);
+    interposer_disable();
+    G_UNLOCK(shadowtorpreloadTorInitLock);
+    interposer_enable();
+    return ret;
+}
 
 int write_str_to_file(const char *fname, const char *str, int bin) {
     /* check if filepath is a consenus file. store it in separate files
@@ -349,10 +365,17 @@ struct _PreloadGlobal {
     unsigned long (*libevent_id_fn)(void);
     struct evthread_lock_callbacks libevent_lock_fns;
     struct evthread_condition_callbacks libevent_cond_fns;
+
+    unsigned long (*crypto_id_fn)(void);
+    void (*crypto_lock_fn)(int mode,int type, const char *file,int line);
+    struct CRYPTO_dynlock_value *(*crypto_dyn_create_function)(const char *file, int line);
+    void (*crypto_dyn_lock_function)(int mode, struct CRYPTO_dynlock_value *l, const char *file, int line);
+    void (*crypto_dyn_destroy_function)(struct CRYPTO_dynlock_value *l, const char *file, int line);
 };
 
 PreloadGlobal shadowtorpreloadGlobalState = {FALSE, FALSE, FALSE, 0, 0, 0, NULL,
-        NULL, 0, 0, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL};
+        NULL, 0, 0, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL};
 G_LOCK_DEFINE_STATIC(shadowtorpreloadPrimaryLock);
 G_LOCK_DEFINE_STATIC(shadowtorpreloadSecondaryLock);
 G_LOCK_DEFINE_STATIC(shadowtorpreloadTrenaryLock);
@@ -590,43 +613,6 @@ void tor_ssl_global_init() {
     // do nothing, we initialized openssl above in crypto_global_init
 }
 
-static unsigned long _shadowtorpreload_getIDFunc(void) {
-    /* return an ID that is unique for each thread */
-    return (unsigned long)(_shadowtorpreload_getWorker());
-}
-
-unsigned long (*CRYPTO_get_id_callback(void))(void) {
-    return (unsigned long)_shadowtorpreload_getIDFunc;
-}
-
-static void _shadowtorpreload_cryptoLockingFunc(int mode, int n, const char *file, int line) {
-    assert(shadowtorpreloadGlobalState.initialized);
-
-    GRWLock* lock = &(shadowtorpreloadGlobalState.cryptoThreadLocks[n]);
-    assert(lock);
-
-    interposer_disable();
-    if(mode & CRYPTO_LOCK) {
-        if(mode & CRYPTO_READ) {
-            g_rw_lock_reader_lock(lock);
-        } else if(mode & CRYPTO_WRITE) {
-            g_rw_lock_writer_lock(lock);
-        }
-    } else if(mode & CRYPTO_UNLOCK) {
-        if(mode & CRYPTO_READ) {
-            g_rw_lock_reader_unlock(lock);
-        } else if(mode & CRYPTO_WRITE) {
-            g_rw_lock_writer_unlock(lock);
-        }
-    }
-    interposer_enable();
-}
-
-void (*CRYPTO_get_locking_callback(void))(int mode,int type,const char *file,
-        int line) {
-    return _shadowtorpreload_cryptoLockingFunc;
-}
-
 static void _shadowtorpreload_cryptoSetup(int numLocks) {
     interposer_disable();
     G_LOCK(shadowtorpreloadPrimaryLock);
@@ -666,6 +652,125 @@ static void _shadowtorpreload_cryptoTeardown(void) {
     }
 
     G_UNLOCK(shadowtorpreloadPrimaryLock);
+    interposer_enable();
+}
+
+static unsigned long _shadowtorpreload_getIDFunc(void) {
+    /* return an ID that is unique for each thread */
+    return (unsigned long)(_shadowtorpreload_getWorker());
+}
+
+static void _shadowtorpreload_cryptoLockingFunc(int mode, int n, const char *file, int line) {
+    assert(shadowtorpreloadGlobalState.initialized);
+
+    GRWLock* lock = &(shadowtorpreloadGlobalState.cryptoThreadLocks[n]);
+    assert(lock);
+
+    interposer_disable();
+    if(mode & CRYPTO_LOCK) {
+        if(mode & CRYPTO_READ) {
+            g_rw_lock_reader_lock(lock);
+        } else if(mode & CRYPTO_WRITE) {
+            g_rw_lock_writer_lock(lock);
+        }
+    } else if(mode & CRYPTO_UNLOCK) {
+        if(mode & CRYPTO_READ) {
+            g_rw_lock_reader_unlock(lock);
+        } else if(mode & CRYPTO_WRITE) {
+            g_rw_lock_writer_unlock(lock);
+        }
+    }
+    interposer_enable();
+}
+
+static struct CRYPTO_dynlock_value* _shadowtorpreload_dynlock_create(const char *file, int line) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.crypto_dyn_create_function != NULL);
+    struct CRYPTO_dynlock_value* ret = shadowtorpreloadGlobalState.crypto_dyn_create_function(file, line);
+    interposer_enable();
+    return ret;
+}
+
+static void _shadowtorpreload_dynlock_lock(int mode, struct CRYPTO_dynlock_value *l, const char *file, int line) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.crypto_dyn_lock_function != NULL);
+    shadowtorpreloadGlobalState.crypto_dyn_lock_function(mode, l, file, line);
+    interposer_enable();
+}
+
+static void _shadowtorpreload_dynlock_destroy(struct CRYPTO_dynlock_value *l, const char *file, int line) {
+    interposer_disable();
+    g_assert(shadowtorpreloadGlobalState.crypto_dyn_destroy_function != NULL);
+    shadowtorpreloadGlobalState.crypto_dyn_destroy_function(l, file, line);
+    interposer_enable();
+}
+
+//unsigned long (*CRYPTO_get_id_callback(void))(void) {
+//    return (unsigned long)_shadowtorpreload_getIDFunc;
+//}
+//
+//void (*CRYPTO_get_locking_callback(void))(int mode,int type,const char *file,
+//        int line) {
+//    return _shadowtorpreload_cryptoLockingFunc;
+//}
+
+void CRYPTO_set_id_callback(unsigned long (*func)(void)) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+    if(!shadowtorpreloadGlobalState.crypto_id_fn && func) {
+        shadowtorpreloadGlobalState.crypto_id_fn = func;
+        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_id_callback != NULL);
+        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_id_callback(_shadowtorpreload_getIDFunc);
+    }
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+}
+
+void CRYPTO_set_locking_callback(void (*func)(int mode,int type, const char *file,int line)) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+    if(!shadowtorpreloadGlobalState.crypto_lock_fn && func) {
+        shadowtorpreloadGlobalState.crypto_lock_fn = func;
+        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_locking_callback != NULL);
+        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_locking_callback(_shadowtorpreload_cryptoLockingFunc);
+    }
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+}
+
+void CRYPTO_set_dynlock_create_callback(struct CRYPTO_dynlock_value *(*dyn_create_function)(const char *file, int line)) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+    if(!shadowtorpreloadGlobalState.crypto_dyn_create_function && dyn_create_function) {
+        shadowtorpreloadGlobalState.crypto_dyn_create_function = dyn_create_function;
+        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_create_callback != NULL);
+        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_create_callback(_shadowtorpreload_dynlock_create);
+    }
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+}
+
+void CRYPTO_set_dynlock_lock_callback(void (*dyn_lock_function)(int mode, struct CRYPTO_dynlock_value *l, const char *file, int line)) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+    if(!shadowtorpreloadGlobalState.crypto_dyn_lock_function && dyn_lock_function) {
+        shadowtorpreloadGlobalState.crypto_dyn_lock_function = dyn_lock_function;
+        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_lock_callback != NULL);
+        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_lock_callback(_shadowtorpreload_dynlock_lock);
+    }
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
+    interposer_enable();
+}
+
+void CRYPTO_set_dynlock_destroy_callback(void (*dyn_destroy_function)(struct CRYPTO_dynlock_value *l, const char *file, int line)) {
+    interposer_disable();
+    G_LOCK(shadowtorpreloadTrenaryLock);
+    if(!shadowtorpreloadGlobalState.crypto_dyn_destroy_function && dyn_destroy_function) {
+        shadowtorpreloadGlobalState.crypto_dyn_destroy_function = dyn_destroy_function;
+        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_destroy_callback != NULL);
+        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_destroy_callback(_shadowtorpreload_dynlock_destroy);
+    }
+    G_UNLOCK(shadowtorpreloadTrenaryLock);
     interposer_enable();
 }
 
