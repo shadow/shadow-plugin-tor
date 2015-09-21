@@ -962,11 +962,13 @@ def write_torrc_files(args, dirauths, bridgeauths, bridges, guardids, exitids):
     for bridge in bridges:
         bridges_lines += "Bridge {0}:9111\n".format(bridge[fixme])
     '''
+    auth_name_csv = ','.join([auth[0] for auth in dirauths])
     common = \
 '{0}\
 TestingTorNetwork 1\n\
 AllowInvalidNodes "entry,middle,exit,introduction,rendezvous"\n\
 ServerDNSResolvConfFile conf/shadowresolv.conf\n\
+ServerDNSTestAddresses {1}\n\
 ServerDNSAllowBrokenConfig 1\n\
 ServerDNSDetectHijacking 0\n\
 NumCPUs 1\n\
@@ -982,7 +984,7 @@ EntryStatistics 1\n\
 ExitPortStatistics 1\n\
 ExtraInfoStatistics 1\n\
 CircuitPriorityHalflife 30\n\
-ControlPort 9051\n'.format(auths_lines)
+ControlPort 9051\n'.format(auths_lines, auth_name_csv)
     clients = \
 'ORPort 0\n\
 DirPort 0\n\
