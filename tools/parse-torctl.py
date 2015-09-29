@@ -189,13 +189,14 @@ def source_cleanup(filename, source, xzproc):
 def dump(data, prefix, filename, compress=True):
     if not os.path.exists(prefix): os.makedirs(prefix)
     if compress: # inline compression
-        path = "{0}/{1}.xz".format(prefix, filename)
-        xzp = Popen(["xz", "--threads=3", "-"], stdin=PIPE, stdout=PIPE)
-        ddp = Popen(["dd", "status=none", "of={0}".format(path)], stdin=xzp.stdout)
-        json.dump(data, xzp.stdin, sort_keys=True, separators=(',', ': '), indent=2)
-        xzp.stdin.close()
-        xzp.wait()
-        ddp.wait()
+        with open("/dev/null", 'a') as nullf:
+            path = "{0}/{1}.xz".format(prefix, filename)
+            xzp = Popen(["xz", "--threads=3", "-"], stdin=PIPE, stdout=PIPE)
+            ddp = Popen(["dd", "of={0}".format(path)], stdin=xzp.stdout, stdout=nullf, stderr=nullf)
+            json.dump(data, xzp.stdin, sort_keys=True, separators=(',', ': '), indent=2)
+            xzp.stdin.close()
+            xzp.wait()
+            ddp.wait()
     else: # no compression
         path = "{0}/{1}".format(prefix, filename)
         with open(path, 'w') as outf: json.dump(data, outf, sort_keys=True, separators=(',', ': '), indent=2)
