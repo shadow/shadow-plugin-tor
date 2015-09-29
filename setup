@@ -554,9 +554,9 @@ def download(url, target_path):
             return 0
         except urllib2.URLError as e:
             logging.error("failed to download \'{0}\' using urllib2".format(url))
-            curlpath = which("curl") + " -L -O"
+            curlpath = which("curl")
             if curlpath is not None:
-                retcode = subprocess.call(shlex.split("{0} {1}".format(curlpath, url)))
+                retcode = subprocess.call(shlex.split("{0} -L -O {1}".format(curlpath, url)))
                 if retcode == 0:
                     logging.info("successfully downloaded \'{0}\' using curl".format(url))
                     return 0
