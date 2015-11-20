@@ -14,7 +14,7 @@ from datetime import datetime
 DEFAULTPREFIX=os.path.abspath(os.path.expanduser("~/.shadow/"))
 DEFAULTOUTPUT=os.path.abspath(os.path.expanduser("./"))
 DEFAULTINPUT=os.path.abspath(os.path.expanduser("./shadow.config.xml"))
-        
+
 def main():
     # setup our commands
     ap = argparse.ArgumentParser(description='Run Tor experiments as a plug-in to Shadow', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -25,14 +25,14 @@ def main():
     ap.add_argument('-r', '--reset', action="store_true", dest="reset", help="reset data directory and exit", default=False)
     ap.add_argument('-y', '--assume-yes', action="store_true", dest="clear", help="don't ask before resetting data directory", default=False)
     ap.add_argument('-a', '--enable-aesni', action="store_true", dest="aesni", help="enable AES-NI cipher functions in OpenSSL", default=False)
-    
+
     # get arguments, accessible with args.value
     args, unknown_args = ap.parse_known_args()
-    
+
     args.output = os.path.abspath(os.path.expanduser(args.output))
     args.input = os.path.abspath(os.path.expanduser(args.input))
     args.prefix = os.path.abspath(os.path.expanduser(args.prefix))
-    
+
     datapath = os.path.abspath(args.output+"/shadow.data")
     logpath = os.path.abspath(args.output+"/shadow.log")
     dstatpath = os.path.abspath(args.output+"/dstat.log")
@@ -40,14 +40,14 @@ def main():
     # does our output data directory already have data?
     if os.path.exists(datapath):
         log("Data exists in output path")
-        if not args.clear and not query_yes_no("Is it OK to clear data directory {0}?".format(datapath), default="no"): 
+        if not args.clear and not query_yes_no("Is it OK to clear data directory {0}?".format(datapath), default="no"):
             log("Experiment aborted to prevent destroying {0}".format(datapath))
             return -1
-        
+
     # reset the data directory
     reset(args.output)
     log("Data directory reset in output path")
-    
+
     if args.reset: return 0
 
     # start monitoring, if dstat is in the path
@@ -64,21 +64,21 @@ def main():
     os.putenv("EVENT_NOEVPORT", "1")
     os.putenv("EVENT_NOWIN32", "1")
     log("set environmental variables for libevent: EVENT_NOSELECT, EVENT_NOPOLL, EVENT_NOKQUEUE, EVENT_NODEVPOLL, EVENT_NOEVPORT, EVENT_NOWIN32")
-    
+
     if not args.aesni:
         os.putenv("OPENSSL_ia32cap", "~0x200000200000000")
         log("set environmental variable for openssl: OPENSSL_ia32cap=~0x200000200000000")
-        
+
     # run paths
     shadowpath = os.path.abspath("{0}/bin/shadow".format(args.prefix))
     preloadpath = os.path.abspath("{0}/lib/libshadow-preload-tor.so".format(args.prefix))
     xmlpaths = os.path.abspath("{0}".format(args.input))
-    
+
     # command to run
     cmd = "{0} --preload={1} {2} {3}".format(shadowpath, preloadpath, ' '.join(unknown_args), xmlpaths)
     log("calling '{0}', output directed to '{1}'".format(cmd, logpath))
     start = datetime.now()
-    
+
     retcode = None
     if args.compress > 0: # compress with threaded xz
         xz_p = subprocess.Popen("xz -T {0} > {1}.xz".format(args.compress, logpath), stdin=subprocess.PIPE, shell=True)
@@ -88,12 +88,12 @@ def main():
     else:
         with open(logpath, 'wb') as f:
             retcode = subprocess.call(cmd.split(), cwd=args.output, stdout=f)
-    
+
     end = datetime.now()
 
     if dstat_p is not None: dstat_p.kill()
     log("Shadow returned {1} in {2} seconds".format(end, retcode, end-start))
-    
+
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
 
