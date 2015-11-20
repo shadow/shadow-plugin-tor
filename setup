@@ -31,48 +31,48 @@ LIBEVENT_URL_SIG="https://github.com/downloads/libevent/libevent/{0}.tar.gz.asc"
 
 def main():
     parser_main = argparse.ArgumentParser(
-        description='Utility to help setup the Shadow simulator plug-in that runs Tor', 
+        description='Utility to help setup the Shadow simulator plug-in that runs Tor',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    
+
     # setup our commands
     subparsers_main = parser_main.add_subparsers(
         help='run a subcommand (for help use <subcommand> --help)')
-        
+
     # configure dependencies subcommand
     parser_dep = subparsers_main.add_parser('dependencies',
-        help="configure and build custom plug-in dependencies", 
+        help="configure and build custom plug-in dependencies",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser_dep.set_defaults(func=dependencies, 
+    parser_dep.set_defaults(func=dependencies,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    
+
     # add dependencies options
-    parser_dep.add_argument('-p', '--prefix', 
-        help="configure PATH as dependency root installation directory", 
+    parser_dep.add_argument('-p', '--prefix',
+        help="configure PATH as dependency root installation directory",
         metavar="PATH",
         action="store", dest="prefix",
         default=INSTALL_PREFIX)
-        
+
     # configure build subcommand
     parser_build = subparsers_main.add_parser('build',
-        help='configure and build plug-in', 
+        help='configure and build plug-in',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser_build.set_defaults(func=build, 
+    parser_build.set_defaults(func=build,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    
+
     # add building options
-    parser_build.add_argument('-p', '--prefix', 
-        help="configure PATH as Shadow root installation directory", 
+    parser_build.add_argument('-p', '--prefix',
+        help="configure PATH as Shadow root installation directory",
         metavar="PATH",
         action="store", dest="prefix",
         default=INSTALL_PREFIX)
-    
-    parser_build.add_argument('-i', '--include', 
+
+    parser_build.add_argument('-i', '--include',
         help="append PATH to the list of paths searched for headers. useful if dependencies are installed to non-standard locations, or when compiling custom libraries.",
         metavar="PATH",
         action="append", dest="extra_includes",
         default=[INSTALL_PREFIX+ "/include", os.path.expanduser("~/.local/include"), os.path.expanduser("~/.local/share/llvm/cmake")])
-    
-    parser_build.add_argument('-l', '--library', 
+
+    parser_build.add_argument('-l', '--library',
         help="append PATH to the list of paths searched for libraries. useful if dependencies are installed to non-standard locations, or when compiling custom libraries.",
         metavar="PATH",
         action="append", dest="extra_libraries",
@@ -82,7 +82,7 @@ def main():
         help="force a full rebuild by removing build cache",
         action="store_true", dest="do_force_rebuild",
         default=False)
-    
+
     parser_build.add_argument('-g', '--debug',
         help="build in extra memory checks and debugging symbols when running Shadow",
         action="store_true", dest="do_debug",
@@ -92,84 +92,84 @@ def main():
         help="print verbose output from the compiler",
         action="store_true", dest="do_verbose",
         default=False)
-        
+
     parser_build.add_argument('-j', '--jobs',
         help="number of jobs to run simultaneously during the build",
         metavar="N", type=int,
         action="store", dest="njobs",
         default=multiprocessing.cpu_count())
-        
+
     parser_build.add_argument('-o', '--profile',
         help="build in gprof profiling information when running Shadow",
         action="store_true", dest="do_profile",
         default=False)
-    
+
     parser_build.add_argument('-t', '--test',
-        help="build tests", 
+        help="build tests",
         action="store_true", dest="do_test",
         default=False)
-    
-    parser_build.add_argument('--tor-prefix', 
-        help="PATH to a custom base Tor directory to build (overrides '--tor-version')", 
-        metavar="PATH", 
+
+    parser_build.add_argument('--tor-prefix',
+        help="PATH to a custom base Tor directory to build (overrides '--tor-version')",
+        metavar="PATH",
         action="store", dest="tor_prefix",
         default=None)
-    
-    parser_build.add_argument('--tor-version', 
-        help="specify which VERSION of Tor to download and build (overridden by '--tor-prefix')", 
-        metavar="VERSION", 
+
+    parser_build.add_argument('--tor-version',
+        help="specify which VERSION of Tor to download and build (overridden by '--tor-prefix')",
+        metavar="VERSION",
         action="store", dest="tor_version",
         default=TOR_DEFAULT_VERSION)
 
-    parser_build.add_argument('--tor-lib', 
+    parser_build.add_argument('--tor-lib',
         help="append LIB to the list of libraries that get linked with shadow-plugin-tor. Useful when compiling and linking custom libraries.",
         metavar="LIB",
         action="append", dest="tor_libraries",
         default=[])
-    
-    parser_build.add_argument('--libevent-prefix', 
+
+    parser_build.add_argument('--libevent-prefix',
         help="use non-standard PATH when linking Tor to libevent.",
         metavar="PATH",
         action="store", dest="libevent_prefix",
         default=INSTALL_PREFIX)
-    
-    parser_build.add_argument('--static-libevent', 
-        help="tell Tor to link against the static version of libevent", 
+
+    parser_build.add_argument('--static-libevent',
+        help="tell Tor to link against the static version of libevent",
         action="store_true", dest="static_libevent",
         default=True)
-    
-    parser_build.add_argument('--openssl-prefix', 
+
+    parser_build.add_argument('--openssl-prefix',
         help="use non-standard PATH when linking Tor to openssl.",
         metavar="PATH",
         action="store", dest="openssl_prefix",
         default=INSTALL_PREFIX)
 
-    parser_build.add_argument('--static-openssl', 
-        help="tell Tor to link against the static version of openssl", 
+    parser_build.add_argument('--static-openssl',
+        help="tell Tor to link against the static version of openssl",
         action="store_true", dest="static_openssl",
         default=True)
-    
-    parser_build.add_argument('--export-libraries', 
-        help="export Shadow's plug-in service libraries and headers", 
+
+    parser_build.add_argument('--export-libraries',
+        help="export Shadow's plug-in service libraries and headers",
         action="store_true", dest="export_libraries",
         default=False)
-        
-    parser_build.add_argument('--enable-evp-cipher-encryption', 
-        help="do not intercept EVP_Cipher, so that we allow EVP_Cipher encryption to be performed as normal during simulation", 
+
+    parser_build.add_argument('--enable-evp-cipher-encryption',
+        help="do not intercept EVP_Cipher, so that we allow EVP_Cipher encryption to be performed as normal during simulation",
         action="store_true", dest="enable_evpcipher",
         default=False)
-       
+
     # configure install subcommand
-    parser_install = subparsers_main.add_parser('install', help='install Shadow', 
+    parser_install = subparsers_main.add_parser('install', help='install Shadow',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser_install.set_defaults(func=install, 
+    parser_install.set_defaults(func=install,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    
+
     # get arguments, accessible with args.value
     args = parser_main.parse_args()
     # run chosen command
     r = args.func(args)
-    
+
     logging.info("returning code '{0}'".format(r))
 
 def dependencies(args):
@@ -177,24 +177,24 @@ def dependencies(args):
     filepath=getfullpath(__file__)
     rootdir=filepath[:filepath.rfind("/")]
     builddir=getfullpath(BUILD_PREFIX)
-    
+
     keyring=getfullpath(rootdir + "/tools/deps_keyring.gpg")
-    
+
     ## we will start in build directory
     if not os.path.exists(builddir): os.makedirs(builddir)
     os.chdir(builddir)
-    
+
     openssl_tarball = get("./", OPENSSL_URL, OPENSSL_URL_SIG, keyring)
     if openssl_tarball is None: return -1
     libevent_tarball = get("./", LIBEVENT_URL, LIBEVENT_URL_SIG, keyring)
     if libevent_tarball is None: return -1
-    
+
     ## build openssl first
-    
+
     dir = extract(openssl_tarball)
     if dir is None: return -1
     os.chdir(dir)
-    
+
     ## for debugging and profiling (you may want to enable -g and -pg independently)
     #configure = "./config --prefix={0} no-shared threads -fPIC -g -pg -DPURIFY -Bsymbolic".format(args.prefix)
     is64 = sys.maxsize > 2**32
@@ -202,12 +202,12 @@ def dependencies(args):
     configure = "./config --prefix={0} shared threads {1} -fPIC".format(args.prefix, ecopt)
 
     logging.info("now attempting to build openssl with '{0}'".format(configure))
-    if automake(configure, "make", "make install_sw") != 0: 
+    if automake(configure, "make", "make install_sw") != 0:
         logging.error("problems building {0}".format(openssl_tarball))
         return -1
-        
+
     ## now build libevent
-        
+
     os.chdir(builddir)
     dir = extract(libevent_tarball)
     if dir is None: return -1
@@ -217,11 +217,11 @@ def dependencies(args):
     configure = "./configure --prefix={0} --enable-shared CFLAGS=\"-fPIC -I{0}\" LDFLAGS=\"-L{0}\"".format(args.prefix)
 
     logging.info("now attempting to build libevent with '{0}'".format(configure))
-    if automake(configure, "make", "make install") != 0: 
+    if automake(configure, "make", "make install") != 0:
         logging.error("problems building {0}".format(openssl_tarball))
         return -1
-    
-    logging.info("successfully installed dependencies to '{0}'".format(args.prefix))    
+
+    logging.info("successfully installed dependencies to '{0}'".format(args.prefix))
     return 0
 
 def automake(configure, make, install):
@@ -232,33 +232,33 @@ def automake(configure, make, install):
     retcode = subprocess.call(shlex.split(install))
     if retcode != 0: return retcode
     return 0
-    
+
 def build(args):
     # get absolute paths
     if args.prefix is not None: args.prefix = getfullpath(args.prefix)
     if args.tor_prefix is not None: args.tor_prefix = getfullpath(args.tor_prefix)
     if args.libevent_prefix is not None: args.libevent_prefix = getfullpath(args.libevent_prefix)
     if args.openssl_prefix is not None: args.openssl_prefix = getfullpath(args.openssl_prefix)
-    
+
     args.tor_url = TOR_URL.replace(TOR_DEFAULT_VERSION, args.tor_version)
     args.tor_sig_url = TOR_URL_SIG.replace(TOR_DEFAULT_VERSION, args.tor_version)
-    
+
     filepath=getfullpath(__file__)
     rootdir=filepath[:filepath.rfind("/")]
     builddir=getfullpath(BUILD_PREFIX)
     installdir=getfullpath(args.prefix)
-    
+
     args.keyring = getfullpath(rootdir + "/tools/deps_keyring.gpg")
-    
+
     # clear cmake cache
     if args.do_force_rebuild and os.path.exists(builddir+"/main"): shutil.rmtree(builddir+"/main")
     if args.tor_prefix != None and os.path.exists(builddir+"/main/src/tor"): shutil.rmtree(builddir+"/main/src/tor")
     if args.tor_version != TOR_DEFAULT_VERSION and os.path.exists(builddir+"/tor"): shutil.rmtree(builddir+"/tor")
-    
+
     # create directories
     if not os.path.exists(builddir+"/main"): os.makedirs(builddir+"/main")
     if not os.path.exists(installdir): os.makedirs(installdir)
-        
+
     # build up args string for the cmake command
     cmake_cmd = "cmake " + rootdir + " -DCMAKE_INSTALL_PREFIX=" + installdir
 
@@ -271,16 +271,16 @@ def build(args):
 
     # we will run from build directory
     calledDirectory = os.getcwd()
-    
+
     # run build tasks
     os.chdir(builddir)
-    
+
     # check if we need to setup Tor
     args.tordir = getfullpath(builddir+"/tor")
 
     if setup_tor(args) != 0: return -1
     #cmake_cmd += " -DTORPATH=" + args.tordir
-    
+
     torversion = get_tor_version(args)
     if torversion == None: return -1
     logging.info("detected tor version {0}".format(torversion))
@@ -290,14 +290,14 @@ def build(args):
     cmake_cmd += " -DTOR_VERSION_B={0}".format(b)
     cmake_cmd += " -DTOR_VERSION_C={0}".format(c)
     cmake_cmd += " -DTOR_VERSION_D={0}".format(d)
-    
+
     # now we will be using cmake to build shadow and the plug-ins
     os.chdir(builddir+"/main")
-    
+
     # hack to make passing args to CMAKE work... doesnt seem to like the first arg
     args.extra_includes.insert(0, "./")
     args.extra_libraries.insert(0, "./")
-    
+
     # add extra library and include directories as absolution paths
     make_paths_absolute(args.extra_includes)
     make_paths_absolute(args.extra_libraries)
@@ -309,23 +309,23 @@ def build(args):
 
     # look for the clang/clang++ compilers
     clangccpath = which("clang")
-    if clangccpath is None: 
+    if clangccpath is None:
         log("ERROR: can't find 'clang' compiler in your PATH! Is it installed? (Do you want the 'dependencies' subcommand?)")
     clangcxxpath = which("clang++")
-    if clangcxxpath is None: 
+    if clangcxxpath is None:
         log("ERROR: can't find 'clang++' compiler in your PATH! Is it installed? (Do you want the 'dependencies' subcommand?)")
     if clangccpath is None or clangcxxpath is None: return -1
-    
+
     # set clang/llvm as compiler
     os.putenv("CC", clangccpath)
     os.putenv("CXX", clangcxxpath)
     #cmake_cmd += " -D_CMAKE_TOOLCHAIN_PREFIX=llvm-"
-    
+
     # call cmake to configure the make process, wait for completion
     logging.info("running \'{0}\' from \'{1}\'".format(cmake_cmd, os.getcwd()))
     retcode = subprocess.call(cmake_cmd.strip().split())
     logging.info("cmake returned " + str(retcode))
-    
+
     if retcode == 0:
         # call make, wait for it to finish
         make = "make -j{0}".format(args.njobs)
@@ -342,22 +342,22 @@ def build(args):
 
 def install(args):
     builddir=getfullpath(BUILD_PREFIX+"/main")
-    if not os.path.exists(builddir): 
+    if not os.path.exists(builddir):
         log("ERROR: please build before installing!")
         return
 
     # go to build dir and install from makefile
     calledDirectory = os.getcwd()
     os.chdir(builddir)
-    
+
     # call make install, wait for it to finish
     makeCommand = "make install"
-    
+
     logging.info("calling \'"+makeCommand+"\'")
     retcode = subprocess.call(makeCommand.strip().split())
     logging.info("make install returned " + str(retcode))
     if retcode == 0: logging.info("now run \'shadow-tor\' from \'PREFIX/bin\' (check your PATH)")
-    
+
     # go back to where we came from
     os.chdir(calledDirectory)
     return retcode
@@ -368,7 +368,7 @@ def setup_tor(args):
     if which("autoreconf") is None or which("aclocal") is None or which("autoheader") is None or which("autoconf") is None or which("automake") is None:
         logging.error("missing dependencies - please install 'automake' and 'autoconf', or make sure they are in your PATH")
         return -1
-    
+
     # if custom Tor prefix is given, always blow away Tor's build directory
     # and clean the potentially dirty custom directory
     if args.tor_prefix is not None:
@@ -380,15 +380,15 @@ def setup_tor(args):
     # otherwise blow it away if there were problems building it so we try again
     elif os.path.exists(args.tordir) and not os.path.exists(args.tordir+"/src/or/tor"):
         shutil.rmtree(args.tordir)
-    
+
     if not os.path.exists(args.tordir):
         # we have no Tor build directory, check requested url
         target_tor = getfullpath(os.path.basename(args.tor_url))
-    
+
         # only download if we dont have the requested URL
         if not os.path.exists(target_tor):
             if get("./", args.tor_url, args.tor_sig_url, args.keyring) == None:
-#            if download(args.tor_url, target_tor) != 0: 
+#            if download(args.tor_url, target_tor) != 0:
                 logging.error("problem getting \'{0}\'".format(args.tor_url))
                 return -1
 
@@ -397,10 +397,10 @@ def setup_tor(args):
         if d is not None:
             shutil.copytree(d, args.tordir)
             shutil.rmtree(d)
-        else: 
+        else:
             logging.error("\'{0}\' is not a tarfile".format(target_tor))
             return -1
-    
+
     retcode = 0
 
     # Copy patch and static symbol converter scripts to the build directory
@@ -414,7 +414,7 @@ def setup_tor(args):
             if args.extra_includes is not None:
                 for i in args.extra_includes: cflags += " -I" + i.strip()
             if args.do_debug: cflags += " -g"
-            
+
             ldflags = ""
             if args.extra_libraries is not None:
                 for l in args.extra_libraries: ldflags += " -L" + l.strip()
@@ -444,14 +444,14 @@ def setup_tor(args):
                 logging.info("running \'{0}\'".format(autogen))
                 retcode = subprocess.call(shlex.split(autogen))
                 if retcode !=0: return retcode
-            
+
             # need to patch AFTER generating configure to avoid overwriting the patched configure
             # patch static variables/functions
             #patch = "./patch.sh"
             #logging.info("running \'{0}\'".format(patch))
             #retcode = subprocess.call(shlex.split(patch))
             #if retcode !=0: return retcode
-            
+
             # configure
             logging.info("running \'{0}\'".format(configure))
             retcode = subprocess.call(shlex.split(configure))
@@ -460,24 +460,24 @@ def setup_tor(args):
             make = "make -j{0}".format(args.njobs)
             logging.info("running \'{0}\'".format(make))
             retcode = subprocess.call(shlex.split(make))
-        
+
     return retcode
 
 def get_tor_version(args):
     # get tor version info
     orconf = getfullpath(args.tordir+"/orconfig.h")
-    if not os.path.exists(orconf): 
+    if not os.path.exists(orconf):
         log("ERROR: file \'{0}\' does not exist".format(orconf))
         return None
-    
+
     search = "#define VERSION "
-    
+
     with open(orconf, 'rb') as f:
         for line in f:
             if line.find(search) > -1:
                 return line[line.index("\"")+1:line.rindex("\"")]
-               
-    log("ERROR: cant find version information in config file \'{0}\'".format(orconf)) 
+
+    log("ERROR: cant find version information in config file \'{0}\'".format(orconf))
     return None
 
 def getfullpath(path):
@@ -486,7 +486,7 @@ def getfullpath(path):
 def make_paths_absolute(list):
     for i in xrange(len(list)): list[i] = getfullpath(list[i])
 
-def extract(tarball):    
+def extract(tarball):
     if tarfile.is_tarfile(tarball):
         tar = tarfile.open(tarball, "r:gz")
         n = tar.next().name
@@ -496,20 +496,20 @@ def extract(tarball):
         subprocess.call(shlex.split("tar xaf {0}".format(tarball)))
         tar.close()
         return d
-    else: 
+    else:
         logging.error("\'{0}\' is not a tarfile".format(tarball))
         return None
 
 def get(targetdir, fileurl, sigurl, keyring):
     targetfile = getfullpath(targetdir + "/" + os.path.basename(fileurl))
     targetsig = getfullpath(targetdir + "/" + os.path.basename(sigurl))
-    
+
     if not os.path.exists(targetfile) and (download(fileurl, targetfile) < 0): return None
 
     if not query_yes_no("Do you want to check the signature of {0}?".format(os.path.basename(fileurl))): return targetfile
 
     if (not os.path.exists(targetsig)) and (download(sigurl, targetsig) < 0): return None
-    
+
     question = "Do you want to use the included keyring instead of the running user's keyring?"
     answer = query_yes_no(question)
     retcode = -2
@@ -529,7 +529,7 @@ def get(targetdir, fileurl, sigurl, keyring):
             continue
         break
     success = False
-    if retcode == 0: 
+    if retcode == 0:
         logging.info("Signature is good")
         success = True
     else:
@@ -541,7 +541,7 @@ def get(targetdir, fileurl, sigurl, keyring):
 
     if success and query_yes_no("Everything looks good. OK to proceed?"): return targetfile
     else: return None
-        
+
 def download(url, target_path):
     if query_yes_no("May we download \'{0}\'?".format(url)):
         logging.info("attempting to download " + url)
@@ -565,7 +565,7 @@ def download(url, target_path):
     else:
         logging.error("user denied download permission.")
         return -1
-    
+
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
 
@@ -581,7 +581,7 @@ def query_yes_no(question, default="yes"):
     elif default == "yes": prompt = " [Y/n] "
     elif default == "no": prompt = " [y/N] "
     else: raise ValueError("invalid default answer: '%s'" % default)
-    
+
     color_start_code = "\033[1m" + "\033[93m" # <- bold+yellow
     color_end_code = "\033[0m"
     while True:
@@ -605,7 +605,7 @@ def which(program):
             if is_exe(exe_file):
                 return exe_file
     return None
-    
+
 def log(msg):
     color_start_code = "\033[94m" # red: \033[91m"
     color_end_code = "\033[0m"
