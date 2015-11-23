@@ -113,3 +113,13 @@ gint torflowutil_compareRelays(gconstpointer a, gconstpointer b){
 	TorFlowRelay * bR = (TorFlowRelay *)b;
 	return bR->descriptorBandwidth - aR->descriptorBandwidth;
 }
+
+gint torflowutil_compareRelaysData(gconstpointer a, gconstpointer b, gpointer user_data){
+    return torflowutil_compareRelays(a, b);
+}
+
+gboolean torflowutil_relayEqualFunc(gconstpointer a, gconstpointer b) {
+    TorFlowRelay * aR = (TorFlowRelay *)a;
+    TorFlowRelay * bR = (TorFlowRelay *)b;
+    return g_str_equal(aR->identity->str, bR->identity->str);
+}

@@ -22,23 +22,14 @@ struct _TorFlowBaseInternal {
 
 	/* flags */
 	gboolean waitingMeasurementCircuit;
-	gboolean gettingDescriptors;
 	gint cachedCircId;
 	gchar* cachedCircPath;
 	gboolean isStatusEventSet;
 
-	/* info about relays */
-	GSList* relays;
-	gint numRelays;
-	TorFlowRelay* tempRelay;
-	TorFlowRelay* entryRelay;
-	TorFlowRelay* exitRelay;
-
-	gint sliceNum;
-	gint sliceSize;
-
-	GRand* rand;
-
+	gboolean readyForDescriptors;
+	gboolean gettingDescriptors;
+	GQueue* descriptorLines;
+	
 	GString* receiveLineBuffer;
 };
 
@@ -88,15 +79,19 @@ static void _torflowbase_processLineSync(TorFlowBase* tfb, GString* linebuf) {
 						"started building measurement circuit '%i'", tfb->internal->cachedCircId);
 			}
 		}
-	} else if (g_strstr_len(linebuf->str, linebuf->len, "ns/all")) {
-		tfb->internal->gettingDescriptors = TRUE;
-	} else if (tfb->internal->gettingDescriptors && g_strstr_len(linebuf->str, linebuf->len, " OK")) {
+	} else if (tfb->internal->readyForDescriptors && g_strstr_len(linebuf->str, linebuf->len, "ns/all")) {
+        tfb->internal->readyForDescriptors = FALSE;
+        tfb->internal->gettingDescriptors = TRUE;
+        tfb->internal->descriptorLines = g_queue_new();
+    } else if (tfb->internal->gettingDescriptors && g_strstr_len(linebuf->str, linebuf->len, " OK")) {
 		tfb->internal->gettingDescriptors = FALSE;
-		tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-				"got %i descriptors", tfb->internal->numRelays);
 		if(tfb->internal->eventHandlers.onDescriptorsReceived) {
-			tfb->internal->eventHandlers.onDescriptorsReceived(tfb, tfb->internal->relays);
+			tfb->internal->eventHandlers.onDescriptorsReceived(tfb, tfb->internal->descriptorLines);
 		}
+		while(g_queue_get_length(tfb->internal->descriptorLines) > 0) {
+		    g_free(g_queue_pop_head(tfb->internal->descriptorLines));
+		}
+		g_queue_free(tfb->internal->descriptorLines);
 	}
 }
 
@@ -119,7 +114,7 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 
 		if(g_strstr_len(parts[3], 5, "BUILT")) {
 			if(tfb->internal->waitingMeasurementCircuit && circid == tfb->internal->cachedCircId) {
-				tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+				tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
 						"finished building new measurement circuit '%i'", circid);
 
 				tfb->internal->waitingMeasurementCircuit = FALSE;
@@ -130,6 +125,23 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 				}
 			}
 		} else if(g_strstr_len(parts[3], 6, "CLOSED")) {
+		} else if(g_strstr_len(parts[3], 6, "FAILED")) {
+			if(circid == tfb->internal->cachedCircId) {
+				if(g_strstr_len(parts[7], 14, "REASON=TIMEOUT")) {
+					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+							"measurement circuit '%i' has timed out", circid);
+				} else {
+					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
+							"measurement circuit '%i' has failed for some reason", circid);
+				}
+
+				tfb->internal->waitingMeasurementCircuit = FALSE;
+
+				if(tfb->internal->eventHandlers.onFileServerTimeout) {
+					tfb->internal->eventHandlers.onFileServerTimeout(tfb);
+					isConsumed = TRUE;
+				}
+			}
 		}
 
 		g_strfreev(parts);
@@ -181,70 +193,6 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 		tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
 				"ignoring asynch response '%s'", linebuf->str);
 	}
-}
-
-static void _torflowbase_processDescriptorLine(TorFlowBase* tfb, GString* linebuf) {
-	g_assert(tfb);
-	
-	switch(linebuf->str[0]) {
-		case 'r':
-			tfb->internal->tempRelay = g_new(TorFlowRelay, 1);
-			gchar** parts = g_strsplit(linebuf->str, " ", 4);
-			tfb->internal->tempRelay->nickname = g_string_new(parts[1]);
-			GString* id64 = g_string_new(parts[2]);
-			id64 = g_string_append_c(id64, '=');
-			tfb->internal->tempRelay->identity = torflowutil_base64ToBase16(id64);
-			g_string_free(id64, TRUE);
-			g_strfreev(parts);
-			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id,
-					"now getting descriptor for relay %s", tfb->internal->tempRelay->nickname->str);
-			tfb->internal->tempRelay->measureCount = 0;
-			tfb->internal->tempRelay->t_rtt = NULL;
-			tfb->internal->tempRelay->t_payload = NULL;
-			tfb->internal->tempRelay->t_total = NULL;
-			tfb->internal->tempRelay->bytesPushed = NULL;
-			break;
-		case 's':
-			if(g_strstr_len(linebuf->str, linebuf->len, " Running")) {
-				tfb->internal->tempRelay->running = TRUE;
-			} else {
-				tfb->internal->tempRelay->running = FALSE;
-			}
-			if(g_strstr_len(linebuf->str, linebuf->len, " Fast")) {
-				tfb->internal->tempRelay->fast = TRUE;
-			} else {
-				tfb->internal->tempRelay->fast = FALSE;
-			}
-			if(g_strstr_len(linebuf->str, linebuf->len, " Exit")) {
-				tfb->internal->tempRelay->exit = TRUE;
-				if(g_strstr_len(linebuf->str, linebuf->len, " BadExit")) {
-					tfb->internal->tempRelay->running = FALSE;
-				}
-			} else {
-				tfb->internal->tempRelay->exit = FALSE;
-			}
-			
-			break;
-		case 'w':
-			tfb->internal->tempRelay->descriptorBandwidth = 
-						atoi(g_strstr_len(linebuf->str, linebuf->len, "Bandwidth=") + 10);
-			/* normally we would use advertised BW, but that is not available */
-			tfb->internal->tempRelay->advertisedBandwidth = tfb->internal->tempRelay->descriptorBandwidth;
-			if(tfb->internal->tempRelay->fast && tfb->internal->tempRelay->running) {
-				tfb->internal->relays = g_slist_insert_sorted(tfb->internal->relays, 
-						tfb->internal->tempRelay, torflowutil_compareRelays);
-				tfb->internal->numRelays++; 
-			} else {
-				g_free(tfb->internal->tempRelay);
-			}
-			break;
-		case '.': //meaningless; squelch
-			break;
-		default:
-			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-				"don't know what to do with response '%s'", linebuf->str);
-			break;
-	}		
 }
 
 static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
@@ -299,7 +247,7 @@ static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
 			} else if(code == 650) {/* asynchronous responses */
 				_torflowbase_processLineASync(tfb, linebuf);
 			} else if(tfb->internal->gettingDescriptors) {/* descriptor info */
-				_torflowbase_processDescriptorLine(tfb, linebuf);
+			    g_queue_push_tail(tfb->internal->descriptorLines, g_strdup(linebuf->str));
 			} else {
 				tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id,
 					"received unhandled response '%s'", linebuf->str);
@@ -313,81 +261,6 @@ static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
 			g_assert(FALSE);
 			break;
 	}
-}
-
-/* This function reports all measurements taken in the current slice.
- * It prints the measurements to the log, and would also print them to disk if this were
- * real torflow. */
-void torflowbase_reportMeasurements(TorFlowBase* tfb, gint sliceSize, gint currSlice) {
-
-/*
-	// Calculate the name of the file on disc
-	gdouble startPct, stopPct;
-	startPct = 100.0 * sliceSize * currSlice / (gdouble)(tfb->internal->numRelays);
-	if (sliceSize * (currSlice + 1) >= tfb->internal->numRelays) {
-		stopPct = 100.0;
-	} else {
-		stopPct = 100.0 * sliceSize * (currSlice + 1) / (gdouble)(tfb->internal->numRelays);
-	}
-	struct timespec now_ts;
-	clock_gettime(CLOCK_REALTIME, &now_ts);
-	struct tm * now = gmtime(&(now_ts.tv_sec));
-	gchar* fileName = g_malloc(80);
-	sprintf(fileName, "data/bws-%03.1f:%03.1f-done-%04i-%02i-%02i-%02i:%02i:%02i",
-				startPct,
-				stopPct,
-				now->tm_year+1900,
-				now->tm_mon,
-				now->tm_mday,
-				now->tm_hour,
-				now->tm_min,
-				now->tm_sec);
-	FILE * fp;
-	fp = fopen(fileName, "w");
-
-	// print file header
-	fprintf(fp, "slicenum=%i\n", currSlice);
-	fprintf(fp, "%li\n", now_ts.tv_sec);
-*/
-	tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "Slice %i measurements:", currSlice);
-
-	// loop through measurements and print data
-	GSList* currentNode = g_slist_nth(tfb->internal->relays, sliceSize * currSlice);
-	gint i = 0;
-	while (currentNode && i < sliceSize) {
-		TorFlowRelay* current = currentNode->data;
-		if (current->measureCount > 0) {
-			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "Current[0]: Bytes %i Total %i",
-						GPOINTER_TO_INT(current->bytesPushed->data),
-						GPOINTER_TO_INT(current->t_total->data));
-			gint meanBW = torflowutil_meanBandwidth(current);
-/*
-			fprintf(fp, "node_id=%s nick=%s strm_bw=%i filt_bw=%i desc_bw=%i ns_bw=%i\n",
-						current->identity->str,
-						current->nickname->str,
-						meanBW,
-						torflowutil_filteredBandwidth(current, meanBW),
-						current->advertisedBandwidth,
-						current->descriptorBandwidth);
-*/
-			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-						"node_id=%s nick=%s strm_bw=%i filt_bw=%i desc_bw=%i ns_bw=%i\n",
-						current->identity->str,
-						current->nickname->str,
-						meanBW,
-						torflowutil_filteredBandwidth(current, meanBW),
-						current->advertisedBandwidth,
-						current->descriptorBandwidth);
-		} else {
-			tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id, "%s: unmeasured", current->nickname->str);
-		}
-		i++;
-		currentNode = g_slist_next(currentNode);
-	}
-/*
-	fclose(fp);
-	g_free(fileName);
-*/
 }
 
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
@@ -440,10 +313,19 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 
 		while((bytes = recv(tfb->internal->controld, recvbuf, 10000, 0)) > 0) {
 			recvbuf[bytes] = '\0';
+			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id,
+					"recvbuf:%s",
+					recvbuf);
 
 			gboolean isLastLineIncomplete = FALSE;
 			if(bytes < 2 || recvbuf[bytes-2] != '\r' || recvbuf[bytes-1] != '\n') {
 				isLastLineIncomplete = TRUE;
+			}
+
+			//Check for corner case where first element is \r\n
+			gboolean isStartCRLF = FALSE;
+			if(recvbuf[0] == '\r' && recvbuf[1] == '\n') {
+				isStartCRLF = TRUE;
 			}
 
 			gchar** lines = g_strsplit(recvbuf, "\r\n", 0);
@@ -451,12 +333,15 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 			for(gint i = 0; (line = lines[i]) != NULL; i++) {
 				if(!tfb->internal->receiveLineBuffer) {
 					tfb->internal->receiveLineBuffer = g_string_new(line);
+				} else if (isStartCRLF && i == 0 && 
+						!g_ascii_strcasecmp(line, "")) {
+					/* do nothing; we want to process the line in buffer already */
 				} else {
 					g_string_append_printf(tfb->internal->receiveLineBuffer, "%s", line);
 				}
 
-				if(!g_ascii_strcasecmp(line, "") ||
-						(isLastLineIncomplete && lines[i+1] == NULL)) {
+				if(!(isStartCRLF && i == 0) && (!g_ascii_strcasecmp(line, "") ||
+						(isLastLineIncomplete && lines[i+1] == NULL))) {
 					/* this is '', or the last line, and its not all here yet */
 					continue;
 				} else {
@@ -526,16 +411,14 @@ void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
 	tfb->internal->eventHandlers = *eventHandlers;
 	tfb->internal->commands = g_queue_new();
 	tfb->internal->epolld = epolld;
-	tfb->internal->tempRelay = NULL;
-	tfb->internal->relays = NULL;
-	tfb->internal->numRelays = 0;
-	tfb->internal->rand = g_rand_new();
 }
 
 void torflowbase_free(TorFlowBase* tfb) {
 	g_assert(tfb);
 
-	tfb->internal->eventHandlers.onFree(tfb);
+	if(tfb->internal->eventHandlers.onFree) {
+        tfb->internal->eventHandlers.onFree(tfb);
+	}
 
 	if(tfb->internal->controld) {
 		close(tfb->internal->controld);
@@ -552,10 +435,6 @@ void torflowbase_free(TorFlowBase* tfb) {
 
 	if(tfb->internal->cachedCircPath) {
 		g_free(tfb->internal->cachedCircPath);
-	}
-
-	if(tfb->internal->relays) {
-		g_slist_free_full(tfb->internal->relays, g_free);
 	}
 
 	g_free(tfb->internal);
@@ -580,96 +459,18 @@ const gchar* torflowbase_getCurrentPath(TorFlowBase* tfb) {
 void torflowbase_requestInfo(TorFlowBase* tfb) {
 	g_assert(tfb);
 
-	if (tfb->internal->relays) {
-		g_slist_free_full(tfb->internal->relays, g_free);
-	}
-	tfb->internal->relays = NULL;
-	tfb->internal->tempRelay = NULL;
-	tfb->internal->entryRelay = NULL;
-	tfb->internal->exitRelay = NULL;
-	tfb->internal->numRelays = 0;
 	GString* command = g_string_new(NULL);
 	//g_string_printf(command, "GETINFO dir/status-vote/current/consensus\r\n");
 	g_string_printf(command, "GETINFO ns/all\r\n");
 	g_queue_push_tail(tfb->internal->commands, command);
 	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	tfb->internal->readyForDescriptors = TRUE;
 
 	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a GETINFO command");
 }
 
-gchar* torflowbase_selectNewPath(TorFlowBase* tfb, gint sliceSize, gint currSlice) {
-	g_assert(tfb);	
-
-	gint exitMinCounted = G_MAXINT; //minimum number of counts for any one exit
-	gint numExits = 0; //number of exits whose count is this minimum
-	gint entryMinCounted = G_MAXINT; //minimum number of counts for any one entry
-	gint numEntries = 0; //number of entries whose count is this minimum
-
-	/* Make a pass to count the number of entries/exits with the lowest
-	 * measurement count, then select one of those at random from each
-	 * category. */ 
-	GSList* currentNode = g_slist_nth(tfb->internal->relays, sliceSize * currSlice);
-	gint i = 0;
-	while (currentNode && i < sliceSize) {
-		TorFlowRelay* current = currentNode->data;
-		if (current->exit) {
-			if (current->measureCount == exitMinCounted) {
-				numExits++;
-			} else if (current->measureCount < exitMinCounted) {
-				exitMinCounted = current->measureCount;
-				numExits = 1;
-			}
-		} else {
-			if (current->measureCount == entryMinCounted) {
-				numEntries++;
-			} else if (current->measureCount < entryMinCounted) {
-				entryMinCounted = current->measureCount;
-				numEntries = 1;
-			}
-		}
-		currentNode = g_slist_next(currentNode);
-		i++; 
-	}
-
-	if (!numExits) {
-		tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id, "No exits in slice %i - skipping slice", currSlice);
-		return NULL;
-	} else if (!numEntries) {
-		tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id, "No entries in slice %i - skipping slice", currSlice);
-		return NULL;	
-	}
-
-	//choose uniformly from all entries and exits with the lowest measure count.
-	gint exitPicked = g_rand_int_range(tfb->internal->rand, 0, numExits);
-	gint entryPicked = g_rand_int_range(tfb->internal->rand, 0, numEntries);
-
-	//Make another pass to find the chosen exit and entry
-	currentNode = g_slist_nth(tfb->internal->relays, sliceSize * currSlice);
-	i = 0;
-	while (currentNode && i < sliceSize) {
-		TorFlowRelay* current = currentNode->data;
-		if (current->exit && current->measureCount == exitMinCounted) {
-			if (exitPicked == 0) {
-				tfb->internal->exitRelay = current;
-			}
-			exitPicked--;
-		} else if (!current->exit && current->measureCount == entryMinCounted) {
-			if (entryPicked == 0) {
-				tfb->internal->entryRelay = current;
-			}
-			entryPicked--;
-		}
-		currentNode = g_slist_next(currentNode);
-		i++;
-	}
-
-	return g_strconcat(tfb->internal->entryRelay->nickname->str, ",", tfb->internal->exitRelay->nickname->str, NULL);
-}
-
-gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gint sliceSize, gint currSlice) {
+gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gchar* path) {
 	g_assert(tfb);
-
-	gchar* path = torflowbase_selectNewPath(tfb, sliceSize, currSlice);
 	if (!path) {
 		return FALSE;
 	}
@@ -711,36 +512,6 @@ void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint cir
 	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
 
 	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a ATTACHSTREAM command for stream %i to circuit %i", streamid, circid);
-}
-
-void torflowbase_recordMeasurement(TorFlowBase* tfb, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime) {
-	g_assert(tfb);
-
-	tfb->internal->entryRelay->t_rtt = g_slist_prepend(tfb->internal->entryRelay->t_rtt, GINT_TO_POINTER(roundTripTime));
-	tfb->internal->entryRelay->t_payload = g_slist_prepend(tfb->internal->entryRelay->t_payload, GINT_TO_POINTER(payloadTime));
-	tfb->internal->entryRelay->t_total = g_slist_prepend(tfb->internal->entryRelay->t_total, GINT_TO_POINTER(totalTime));
-	tfb->internal->entryRelay->bytesPushed = g_slist_prepend(tfb->internal->entryRelay->bytesPushed, GINT_TO_POINTER(contentLength));
-	tfb->internal->entryRelay->measureCount++;
-	tfb->internal->exitRelay->t_rtt = g_slist_prepend(tfb->internal->exitRelay->t_rtt, GINT_TO_POINTER(roundTripTime));
-	tfb->internal->exitRelay->t_payload = g_slist_prepend(tfb->internal->exitRelay->t_payload, GINT_TO_POINTER(payloadTime));
-	tfb->internal->exitRelay->t_total = g_slist_prepend(tfb->internal->exitRelay->t_total, GINT_TO_POINTER(totalTime));
-	tfb->internal->exitRelay->bytesPushed = g_slist_prepend(tfb->internal->exitRelay->bytesPushed, GINT_TO_POINTER(contentLength));
-	tfb->internal->exitRelay->measureCount++;
-}
-
-void torflowbase_updateRelays(TorFlowBase* tfb, GSList* relays) {
-	g_assert(tfb);
-
-	tfb->internal->relays = relays;
-}
-
-void torflowbase_recordTimeout(TorFlowBase* tfb) {
-	g_assert(tfb);
-
-	/* This is a buggy behavior deliberately carried over from TorFlow, where failed circuits are
-	 * counted as a "successful measurement" but have no bearing on the stats. */
-	tfb->internal->entryRelay->measureCount++;
-	tfb->internal->exitRelay->measureCount++;
 }
 
 void torflowbase_enableCircuits(TorFlowBase* tfb) {

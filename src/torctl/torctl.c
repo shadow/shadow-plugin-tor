@@ -18,7 +18,7 @@ enum _TorCTLState {
 struct _TorCTL {
 	/* the function we use to log messages
 	 * needs level, functionname, and format */
-	ShadowLogFunc slogf;
+    TorctlLogFunc slogf;
 
 	/* the epoll descriptor to which we will add our sockets.
 	 * we use this descriptor with epoll to watch events on our sockets. */
@@ -83,7 +83,7 @@ static void _torctl_epoll(TorCTL* torctl, gint operation, guint32 events) {
 
 	gint res = epoll_ctl(torctl->ed, operation, torctl->sd, &ev);
 	if(res == -1) {
-		torctl->slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__, "error in epoll_ctl");
+		torctl->slogf(G_LOG_LEVEL_ERROR, __FUNCTION__, "error in epoll_ctl");
 	}
 }
 
@@ -100,12 +100,12 @@ static void _torctl_processLine(TorCTL* torctl, GString* linebuf) {
 		case TCS_AUTHENTICATING: {
 			gint code = _torctl_parseCode(linebuf->str);
 			if(code == 250) {
-				torctl->slogf(SHADOW_LOG_LEVEL_INFO, __FUNCTION__,
+				torctl->slogf(G_LOG_LEVEL_INFO, __FUNCTION__,
 							"successfully received auth response '%s'", linebuf->str);
 				g_queue_push_tail(torctl->commands, g_string_new("GETINFO status/bootstrap-phase\r\n"));
 				torctl->state = TCS_BOOTSTRAPPING;
 			} else {
-				torctl->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
+				torctl->slogf(G_LOG_LEVEL_CRITICAL, __FUNCTION__,
 							"received failed auth response '%s'", linebuf->str);
 			}
 			break;
@@ -115,10 +115,10 @@ static void _torctl_processLine(TorCTL* torctl, GString* linebuf) {
 			/* we will be getting all client status events, not all of them have bootstrap status */
 			gint progress = _torctl_parseBootstrapProgress(linebuf->str);
 			if(progress >= 0) {
-				torctl->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
+				torctl->slogf(G_LOG_LEVEL_DEBUG, __FUNCTION__,
 							"successfully received bootstrap phase response '%s'", linebuf->str);
 				if(progress >= 100) {
-					torctl->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
+					torctl->slogf(G_LOG_LEVEL_MESSAGE, __FUNCTION__,
 							"torctl ready (Bootstrapped 100)");
 
 					g_queue_push_tail(torctl->commands, g_string_new(torctl->eventsCommand->str));
@@ -135,14 +135,14 @@ static void _torctl_processLine(TorCTL* torctl, GString* linebuf) {
 		}
 
 		case TCS_LOGGING: {
-			torctl->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
+			torctl->slogf(G_LOG_LEVEL_MESSAGE, __FUNCTION__,
 					"[torctl-log] %s:%u %s", torctl->hostname->str, ntohs(torctl->netport), linebuf->str);
 			break;
 		}
 
 		default:
 			/* this should never happen */
-			torctl->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
+			torctl->slogf(G_LOG_LEVEL_CRITICAL, __FUNCTION__,
 					"reached unreachable default state, exiting");
 			g_assert(FALSE);
 			break;
@@ -161,7 +161,7 @@ static void _torctl_activate(TorCTL* torctl, uint32_t events) {
 
 	/* send all queued commands */
 	if(events & EPOLLOUT) {
-		torctl->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "EPOLLOUT is set");
+		torctl->slogf(G_LOG_LEVEL_DEBUG, __FUNCTION__, "EPOLLOUT is set");
 
 		while(!g_queue_is_empty(torctl->commands)) {
 			GString* command = g_queue_pop_head(torctl->commands);
@@ -172,7 +172,7 @@ static void _torctl_activate(TorCTL* torctl, uint32_t events) {
 				/* at least some parts of the command were sent successfully */
 				GString* sent = g_string_new(command->str);
 				sent = g_string_truncate(sent, bytes);
-				torctl->slogf(SHADOW_LOG_LEVEL_INFO, __FUNCTION__, "torctl-sent '%s'", g_strchomp(sent->str));
+				torctl->slogf(G_LOG_LEVEL_INFO, __FUNCTION__, "torctl-sent '%s'", g_strchomp(sent->str));
 				g_string_free(sent, TRUE);
 			}
 
@@ -191,7 +191,7 @@ static void _torctl_activate(TorCTL* torctl, uint32_t events) {
 
 	/* recv and process all incoming lines */
 	if(events & EPOLLIN) {
-		torctl->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__, "EPOLLIN is set");
+		torctl->slogf(G_LOG_LEVEL_DEBUG, __FUNCTION__, "EPOLLIN is set");
 
 		gchar recvbuf[102400];
 		memset(recvbuf, 0, 102400);
@@ -243,7 +243,7 @@ gboolean _torctl_start(TorCTL* torctl) {
 	/* use epoll to asynchronously watch events for all of our sockets */
 	torctl->ed = epoll_create(1);
 	if(torctl->ed == -1) {
-		torctl->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "Error in main epoll_create");
+		torctl->slogf(G_LOG_LEVEL_CRITICAL, __FUNCTION__, "Error in main epoll_create");
 		close(torctl->ed);
 		return FALSE;
 	}
@@ -251,7 +251,7 @@ gboolean _torctl_start(TorCTL* torctl) {
 	/* create the client socket and get a socket descriptor */
 	torctl->sd = socket(AF_INET, (SOCK_STREAM | SOCK_NONBLOCK), 0);
 	if(torctl->sd == -1) {
-		torctl->slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
+		torctl->slogf(G_LOG_LEVEL_ERROR, __FUNCTION__,
 				"unable to start control socket: error in socket");
 		return FALSE;
 	}
@@ -278,7 +278,7 @@ gboolean _torctl_start(TorCTL* torctl) {
 	/* connect to server. since we are non-blocking, we expect this to return EINPROGRESS */
 	gint res = connect(torctl->sd, (struct sockaddr *) &serverAddress, sizeof(serverAddress));
 	if (res == -1 && errno != EINPROGRESS) {
-		torctl->slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
+		torctl->slogf(G_LOG_LEVEL_ERROR, __FUNCTION__,
 				"unable to start control socket: error in connect");
 		return FALSE;
 	}
@@ -323,11 +323,11 @@ void torctl_free(TorCTL* torctl) {
 	g_free(torctl);
 }
 
-TorCTL* torctl_new(gint argc, gchar* argv[], ShadowLogFunc slogf) {
+TorCTL* torctl_new(gint argc, gchar* argv[], TorctlLogFunc slogf) {
 	g_assert(slogf);
 
 	if(argc != 4) {
-		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
+		slogf(G_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
 		return NULL;
 	}
 
@@ -362,7 +362,7 @@ void torctl_ready(TorCTL* torctl) {
 	struct epoll_event epevs[100];
 	gint nfds = epoll_wait(torctl->ed, epevs, 100, 0);
 	if(nfds == -1) {
-		torctl->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__, "error in epoll_wait");
+		torctl->slogf(G_LOG_LEVEL_CRITICAL, __FUNCTION__, "error in epoll_wait");
 	} else {
 		for(gint i = 0; i < nfds; i++) {
 			gint d = epevs[i].data.fd;

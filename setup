@@ -17,7 +17,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
 BUILD_PREFIX="./build"
 INSTALL_PREFIX=os.path.expanduser("~/.shadow")
 
-TOR_DEFAULT_VERSION="0.2.5.10"
+TOR_DEFAULT_VERSION="0.2.7.5"
 TOR_URL="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz".format(TOR_DEFAULT_VERSION)
 TOR_URL_SIG="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz.asc".format(TOR_DEFAULT_VERSION)
 
@@ -404,7 +404,7 @@ def setup_tor(args):
     retcode = 0
 
     # Copy patch and static symbol converter scripts to the build directory
-    shutil.copy("../tools/patch.sh", args.tordir)
+    #shutil.copy("../tools/patch.sh", args.tordir)
 
     # if we already configured successfully, dont patch or re-configure
     if os.path.exists(args.tordir):
@@ -447,10 +447,10 @@ def setup_tor(args):
             
             # need to patch AFTER generating configure to avoid overwriting the patched configure
             # patch static variables/functions
-            patch = "./patch.sh"
-            logging.info("running \'{0}\'".format(patch))
-            retcode = subprocess.call(shlex.split(patch))
-            if retcode !=0: return retcode
+            #patch = "./patch.sh"
+            #logging.info("running \'{0}\'".format(patch))
+            #retcode = subprocess.call(shlex.split(patch))
+            #if retcode !=0: return retcode
             
             # configure
             logging.info("running \'{0}\'".format(configure))
@@ -511,22 +511,32 @@ def get(targetdir, fileurl, sigurl, keyring):
     if (not os.path.exists(targetsig)) and (download(sigurl, targetsig) < 0): return None
     
     question = "Do you want to use the included keyring instead of the running user's keyring?"
-    retcode = 0
-    if query_yes_no(question):
-        gpg = "gpg --keyring {0} --verify {1}".format(keyring, targetsig)
-        logging.info("running \'{0}\'".format(gpg))
-        retcode = subprocess.call(shlex.split(gpg))
-    else:
-        gpg = "gpg --verify {0}".format(targetsig)
-        logging.info("running \'{0}\'".format(gpg))
-        retcode = subprocess.call(shlex.split(gpg))
-
+    answer = query_yes_no(question)
+    retcode = -2
+    gpg_binaries = ["gpg2", "gpg"]
+    for gpg_binary in gpg_binaries:
+        try:
+            if answer:
+                gpg = gpg_binary + " --keyring {0} --verify {1}".format(keyring, targetsig)
+                logging.info("running \'{0}\'".format(gpg))
+                retcode = subprocess.call(shlex.split(gpg))
+            else:
+                gpg = gpg_binary + " --verify {0}".format(targetsig)
+                logging.info("running \'{0}\'".format(gpg))
+                retcode = subprocess.call(shlex.split(gpg))
+        except (OSError):
+            logging.info(gpg_binary + " binary is not present")
+            continue
+        break
     success = False
     if retcode == 0: 
         logging.info("Signature is good")
         success = True
-    else: 
-        logging.warning("signature is bad")
+    else:
+        if retcode == -2:
+            logging.warning("No GnuPG binary found")
+        else:
+            logging.warning("Signature is bad")
         if query_yes_no("Do you want to continue without verifying the signature?"): success = True
 
     if success and query_yes_no("Everything looks good. OK to proceed?"): return targetfile
@@ -544,11 +554,11 @@ def download(url, target_path):
             return 0
         except urllib2.URLError as e:
             logging.error("failed to download \'{0}\' using urllib2".format(url))
-            wgetpath = which("wget")
-            if wgetpath is not None:
-                retcode = subprocess.call(shlex.split("{0} {1}".format(wgetpath, url)))
+            curlpath = which("curl")
+            if curlpath is not None:
+                retcode = subprocess.call(shlex.split("{0} -L -O {1}".format(curlpath, url)))
                 if retcode == 0:
-                    logging.info("successfully downloaded \'{0}\' using wget".format(url))
+                    logging.info("successfully downloaded \'{0}\' using curl".format(url))
                     return 0
             raise e
             return -1

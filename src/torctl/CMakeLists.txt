@@ -1,14 +1,15 @@
-find_package(GLIB REQUIRED)
+# torctl - a minimal program to log tor controller messages
+project(shadow-plugin-torctl)
+cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
 
+# dependencies
+find_package(GLIB REQUIRED)
 include_directories(AFTER ${GLIB_INCLUDES})
 
-## create and install a shared library that can plug into shadow
-add_bitcode(shadow-plugin-torctl-bitcode torctl-plugin.c torctl.c)
-add_plugin(shadow-plugin-torctl shadow-plugin-torctl-bitcode)
+## plug-ins need to disable fortification to ensure syscalls are intercepted
+add_cflags("-fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
+
+## create and install a dynamic library that can plug into shadow
+add_shadow_plugin(shadow-plugin-torctl torctl-main.c torctl.c)
 target_link_libraries(shadow-plugin-torctl ${GLIB_LIBRARIES})
 install(TARGETS shadow-plugin-torctl DESTINATION plugins)
-
-## create and install an executable that can run outside of shadow
-add_executable(torctl torctl-main.c torctl.c)
-target_link_libraries(torctl ${GLIB_LIBRARIES})
-install(TARGETS torctl DESTINATION bin)

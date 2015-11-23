@@ -33,9 +33,9 @@ def main():
     args.input = os.path.abspath(os.path.expanduser(args.input))
     args.prefix = os.path.abspath(os.path.expanduser(args.prefix))
     
-    datapath = os.path.abspath(args.output+"/data")
-    logpath = os.path.abspath(datapath+"/shadow.log")
-    dstatpath = os.path.abspath(datapath+"/dstat.log")
+    datapath = os.path.abspath(args.output+"/shadow.data")
+    logpath = os.path.abspath(args.output+"/shadow.log")
+    dstatpath = os.path.abspath(args.output+"/dstat.log")
 
     # does our output data directory already have data?
     if os.path.exists(datapath):
@@ -118,8 +118,9 @@ def query_yes_no(question, default="yes"):
         else: sys.stderr.write("Please respond with 'yes' or 'no' (or 'y' or 'n').\n")
 
 def reset(output):
-    if os.path.exists(output+"/data"): shutil.rmtree(output+"/data")
-    shutil.copytree(output+"/initdata", output+"/data")
+    # shadow does this now
+    #if os.path.exists(output+"/shadow.data"): shutil.rmtree(output+"/shadow.data")
+    #shutil.copytree(output+"/shadow.data.template", output+"/shadow.data")
     return 0
 
 def log(msg):
