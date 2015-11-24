@@ -1009,7 +1009,9 @@ DirPort 9112\n\
 SocksPort 0\n\
 V3BandwidthsFile shadow.data/hosts/torflowauthority/v3bw\n\
 TestingDirAuthVoteGuard {0}\n\
-TestingDirAuthVoteExit {1}\n'.format(guard_flag_str, exit_flag_str)
+TestingDirAuthVoteGuardIsStrict 1\n\
+TestingDirAuthVoteExit {1}\n\
+TestingDirAuthVoteExitIsStrict 1\n'.format(guard_flag_str, exit_flag_str)
     bridgeauths = \
 'AuthoritativeDirectory 1\n\
 BridgeAuthoritativeDir 1\n\
