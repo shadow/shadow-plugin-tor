@@ -52,6 +52,11 @@ def main():
         action="store", dest="prefix",
         default=INSTALL_PREFIX)
 
+    parser_dep.add_argument('-y', '--assume-yes',
+        help="don't ask for confirmation while downloading dependencies",
+        action="store_true", dest="preapproved",
+        default=False)
+
     # configure build subcommand
     parser_build = subparsers_main.add_parser('build',
         help='configure and build plug-in',
@@ -184,9 +189,9 @@ def dependencies(args):
     if not os.path.exists(builddir): os.makedirs(builddir)
     os.chdir(builddir)
 
-    openssl_tarball = get("./", OPENSSL_URL, OPENSSL_URL_SIG, keyring)
+    openssl_tarball = get("./", OPENSSL_URL, OPENSSL_URL_SIG, keyring, args.preapproved)
     if openssl_tarball is None: return -1
-    libevent_tarball = get("./", LIBEVENT_URL, LIBEVENT_URL_SIG, keyring)
+    libevent_tarball = get("./", LIBEVENT_URL, LIBEVENT_URL_SIG, keyring, args.preapproved)
     if libevent_tarball is None: return -1
 
     ## build openssl first
@@ -500,11 +505,13 @@ def extract(tarball):
         logging.error("\'{0}\' is not a tarfile".format(tarball))
         return None
 
-def get(targetdir, fileurl, sigurl, keyring):
+def get(targetdir, fileurl, sigurl, keyring, preapproved=False):
     targetfile = getfullpath(targetdir + "/" + os.path.basename(fileurl))
     targetsig = getfullpath(targetdir + "/" + os.path.basename(sigurl))
 
-    if not os.path.exists(targetfile) and (download(fileurl, targetfile) < 0): return None
+    if not os.path.exists(targetfile) and (download(fileurl, targetfile, preapproved) < 0): return None
+
+    if preapproved: return targetfile
 
     if not query_yes_no("Do you want to check the signature of {0}?".format(os.path.basename(fileurl))): return targetfile
 
@@ -542,8 +549,8 @@ def get(targetdir, fileurl, sigurl, keyring):
     if success and query_yes_no("Everything looks good. OK to proceed?"): return targetfile
     else: return None
 
-def download(url, target_path):
-    if query_yes_no("May we download \'{0}\'?".format(url)):
+def download(url, target_path, preapproved=False):
+    if preapproved or query_yes_no("May we download \'{0}\'?".format(url)):
         logging.info("attempting to download " + url)
         try:
             u = urllib2.urlopen(url)
