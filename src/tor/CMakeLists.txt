@@ -160,6 +160,12 @@ remove_definitions(-DNDEBUG)
 add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 
 ## create and install a shared library that can plug into shadow
+
+macro(add_shadow_plugin target)
+    add_bitcode(${target}-bitcode ${ARGN})
+    add_plugin(${target} ${target}-bitcode)
+endmacro(add_shadow_plugin)
+
 add_shadow_plugin(shadow-plugin-tor 
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
