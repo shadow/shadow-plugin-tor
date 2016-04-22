@@ -6,6 +6,8 @@
 
 #define TORCTL_LOG_DOMAIN "torctl"
 
+GLogLevelFlags torctlLogFilterLevel = G_LOG_LEVEL_INFO;
+
 static const gchar* _torctlmain_logLevelToString(GLogLevelFlags logLevel) {
     switch (logLevel) {
         case G_LOG_LEVEL_ERROR:
@@ -25,15 +27,11 @@ static const gchar* _torctlmain_logLevelToString(GLogLevelFlags logLevel) {
     }
 }
 
-static void _torctlmain_logHandler(const gchar *logDomain, GLogLevelFlags logLevel,
-        const gchar *message, gpointer userData) {
-    if(logLevel > G_LOG_LEVEL_INFO) {
+static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, const gchar* format, ...) {
+    if(level > torctlLogFilterLevel) {
         return;
     }
-    g_print("%s\n", message);
-}
 
-static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, const gchar* format, ...) {
     va_list vargs;
     va_start(vargs, format);
 
@@ -45,7 +43,10 @@ static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, con
             g_date_time_get_hour(dt), g_date_time_get_minute(dt), g_date_time_get_second(dt),
             g_date_time_to_unix(dt), g_date_time_get_microsecond(dt),
             _torctlmain_logLevelToString(level), functionName, format);
-    g_logv(TORCTL_LOG_DOMAIN, level, newformat->str, vargs);
+
+    gchar* message = g_strdup_vprintf(newformat->str, vargs);
+    g_print("%s\n", message);
+    g_free(message);
 
     g_string_free(newformat, TRUE);
     g_date_time_unref(dt);
@@ -57,13 +58,13 @@ static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, con
 
 /* this main replaces the shd-torctl-plugin.c file to run outside of shadow */
 int main(int argc, char *argv[]) {
-    GLogLevelFlags allLevels = (G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION);
-    g_log_set_handler(TORCTL_LOG_DOMAIN, allLevels, _torctlmain_logHandler, NULL);
+    /* default log level, we can update this variable if we want it configurable */
+    torctlLogFilterLevel = G_LOG_LEVEL_INFO;
 
     gchar hostname[128];
     memset(hostname, 0, 128);
     gethostname(hostname, 128);
-	mylog("Starting torctl program on host %s", hostname);
+	mylog("Starting torctl program on host %s process id %i", hostname, (gint)getpid());
 
 	/* create the new state according to user inputs */
 	TorCTL* torctlState = torctl_new(argc, argv, &_torctlmain_log);
