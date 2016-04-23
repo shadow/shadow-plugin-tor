@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <fcntl.h>
 
 #include <event2/dns.h>
 #include <event2/thread.h>
@@ -283,12 +284,11 @@ int RAND_poll() {
 static gint _shadowtorpreload_getRandomBytes(guchar* buf, gint numBytes) {
     gint bytesWritten = 0;
 
-    while(numBytes > bytesWritten) {
-        gint r = rand();
-        gint copyLength = MIN(numBytes-bytesWritten, sizeof(gint));
-        g_memmove(buf+bytesWritten, &r, copyLength);
-        bytesWritten += copyLength;
-    }
+    /* shadow interposes this and will fill the buffer for us */
+    int fd = open("/dev/random", O_RDONLY);
+    int res = read(fd, buf, (size_t)numBytes);
+    assert(res > 0);
+    close(fd);
 
     return 1;
 }
