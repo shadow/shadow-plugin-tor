@@ -123,7 +123,7 @@ class Relay():
             self.upload = int(self.maxwrite / 1024.0)
         else:
             # pity...
-            bw = int(self.bwconsensus / 1024.0)
+            bw = int(self.bwconsensus) #consensus bw already in KiB
             self.download = bw
             self.upload = bw
 
