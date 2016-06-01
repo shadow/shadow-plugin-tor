@@ -30,7 +30,7 @@ NPERF5M = 0.0
 class Relay():
     def __init__(self, ip, bw, isExit=False, isGuard=False):
         self.ip = ip
-        self.bwconsensus = int(bw) # in bytes, from consensus
+        self.bwconsensus = int(bw) # in KiB, from consensus
         self.isExit = isExit
         self.isGuard = isGuard
         self.code = None
@@ -123,7 +123,7 @@ class Relay():
             self.upload = int(self.maxwrite / 1024.0)
         else:
             # pity...
-            bw = int(self.bwconsensus / 1024.0)
+            bw = int(self.bwconsensus) # in KiB
             self.download = bw
             self.upload = bw
 
