@@ -68,10 +68,16 @@ struct _InterposeFuncs {
     CRYPTO_set_dynlock_destroy_callback_fp CRYPTO_set_dynlock_destroy_callback;
 };
 
-typedef struct _PreloadWorker PreloadWorker;
-struct _PreloadWorker {
+typedef struct _PluginData PluginData;
+struct _PluginData {
     GModule* handle;
     InterposeFuncs vtable;
+};
+
+typedef struct _PreloadWorker PreloadWorker;
+struct _PreloadWorker {
+    GHashTable* plugins;
+    PluginData* active;
     int consensusCounter;
 };
 
@@ -89,6 +95,7 @@ static PreloadWorker* _shadowtorpreload_getWorker(void) {
     PreloadWorker* worker = g_private_get(&threadPreloadWorkerKey);
     if (!worker) {
         worker = g_new0(PreloadWorker, 1);
+        worker->plugins = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
         g_private_set(&threadPreloadWorkerKey, worker);
     }
     g_assert(worker);
@@ -110,43 +117,64 @@ static void _shadowtorpreload_cryptoTeardown(void);
  * not *node* dependent, only *thread* dependent.
  */
 
+static PluginData* shadowtorpreload_newPlugin(GModule* handle) {
+    PluginData* pdata = g_new0(PluginData, 1);
+
+    pdata->handle = handle;
+
+    /* tor function lookups */
+    g_assert(g_module_symbol(handle, "tor_init", (gpointer*)&(pdata->vtable.tor_init)));
+    g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(pdata->vtable.write_str_to_file)));
+    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(pdata->vtable.crypto_global_init)));
+    g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(pdata->vtable.crypto_global_cleanup)));
+    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(pdata->vtable.tor_ssl_global_init)));
+
+    /* libevent thread setup */
+    g_assert((pdata->vtable.evthread_set_id_callback = dlsym(RTLD_NEXT, "evthread_set_id_callback")) != NULL);
+    g_assert((pdata->vtable.evthread_set_lock_callbacks = dlsym(RTLD_NEXT, "evthread_set_lock_callbacks")) != NULL);
+    g_assert((pdata->vtable.evthread_set_condition_callbacks = dlsym(RTLD_NEXT, "evthread_set_condition_callbacks")) != NULL);
+
+    /* openssl thread setup */
+    g_assert((pdata->vtable.CRYPTO_set_id_callback = dlsym(RTLD_NEXT, "CRYPTO_set_id_callback")) != NULL);
+    g_assert((pdata->vtable.CRYPTO_set_locking_callback = dlsym(RTLD_NEXT, "CRYPTO_set_locking_callback")) != NULL);
+    g_assert((pdata->vtable.CRYPTO_set_dynlock_create_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_create_callback")) != NULL);
+    g_assert((pdata->vtable.CRYPTO_set_dynlock_lock_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_lock_callback")) != NULL);
+    g_assert((pdata->vtable.CRYPTO_set_dynlock_destroy_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_destroy_callback")) != NULL);
+
+    /* these do not exist in all Tors, so don't assert success */
+    g_module_symbol(handle, "crypto_early_init", (gpointer*)&(pdata->vtable.crypto_early_init));
+    g_module_symbol(handle, "crypto_seed_rng", (gpointer*)&(pdata->vtable.crypto_seed_rng));
+    g_module_symbol(handle, "crypto_init_siphash_key", (gpointer*)&(pdata->vtable.crypto_init_siphash_key));
+
+    return pdata;
+}
+
 void shadowtorpreload_init(GModule* handle, int nLocks) {
     /* lookup all our required symbols in this worker's module, asserting success */
     PreloadWorker* worker = _shadowtorpreload_getWorker();
-    worker->handle = handle;
 
-    /* tor function lookups */
-    g_assert(g_module_symbol(handle, "tor_init", (gpointer*)&(worker->vtable.tor_init)));
-    g_assert(g_module_symbol(handle, "write_str_to_file", (gpointer*)&(worker->vtable.write_str_to_file)));
-    g_assert(g_module_symbol(handle, "crypto_global_init", (gpointer*)&(worker->vtable.crypto_global_init)));
-    g_assert(g_module_symbol(handle, "crypto_global_cleanup", (gpointer*)&(worker->vtable.crypto_global_cleanup)));
-    g_assert(g_module_symbol(handle, "tor_ssl_global_init", (gpointer*)&(worker->vtable.tor_ssl_global_init)));
-
-    /* libevent thread setup */
-    g_assert((worker->vtable.evthread_set_id_callback = dlsym(RTLD_NEXT, "evthread_set_id_callback")) != NULL);
-    g_assert((worker->vtable.evthread_set_lock_callbacks = dlsym(RTLD_NEXT, "evthread_set_lock_callbacks")) != NULL);
-    g_assert((worker->vtable.evthread_set_condition_callbacks = dlsym(RTLD_NEXT, "evthread_set_condition_callbacks")) != NULL);
-
-    /* openssl thread setup */
-    g_assert((worker->vtable.CRYPTO_set_id_callback = dlsym(RTLD_NEXT, "CRYPTO_set_id_callback")) != NULL);
-    g_assert((worker->vtable.CRYPTO_set_locking_callback = dlsym(RTLD_NEXT, "CRYPTO_set_locking_callback")) != NULL);
-    g_assert((worker->vtable.CRYPTO_set_dynlock_create_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_create_callback")) != NULL);
-    g_assert((worker->vtable.CRYPTO_set_dynlock_lock_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_lock_callback")) != NULL);
-    g_assert((worker->vtable.CRYPTO_set_dynlock_destroy_callback = dlsym(RTLD_NEXT, "CRYPTO_set_dynlock_destroy_callback")) != NULL);
-
-    /* these do not exist in all Tors, so don't assert success */
-    g_module_symbol(handle, "crypto_early_init", (gpointer*)&(worker->vtable.crypto_early_init));
-    g_module_symbol(handle, "crypto_seed_rng", (gpointer*)&(worker->vtable.crypto_seed_rng));
-    g_module_symbol(handle, "crypto_init_siphash_key", (gpointer*)&(worker->vtable.crypto_init_siphash_key));
+    PluginData* pdata = shadowtorpreload_newPlugin(handle);
+    g_hash_table_insert(worker->plugins, handle, pdata);
 
     /* handle multi-threading support
      * initialize our locking facilities, ensuring that this is only done once */
     _shadowtorpreload_cryptoSetup(nLocks);
 }
 
-void shadowtorpreload_clear(void) {
+void shadowtorpreload_setActive(GModule* handle) {
+    PreloadWorker* worker = _shadowtorpreload_getWorker();
+    if(handle) {
+        worker->active = g_hash_table_lookup(worker->plugins, handle);
+    } else {
+        worker->active = NULL;
+    }
+}
+
+void shadowtorpreload_clear(GModule* handle) {
     /* the glib thread private worker is freed automatically */
+    PreloadWorker* worker = _shadowtorpreload_getWorker();
     _shadowtorpreload_cryptoTeardown();
+    g_hash_table_remove(worker->plugins, handle);
 }
 
 /********************************************************************************
@@ -163,7 +191,7 @@ int tor_init(int argc, char *argv[]) {
     interposer_disable();
     G_LOCK(shadowtorpreloadTorInitLock);
     interposer_enable();
-    int ret = _shadowtorpreload_getWorker()->vtable.tor_init(argc, argv);
+    int ret = _shadowtorpreload_getWorker()->active->vtable.tor_init(argc, argv);
     interposer_disable();
     G_UNLOCK(shadowtorpreloadTorInitLock);
     interposer_enable();
@@ -185,7 +213,7 @@ int write_str_to_file(const char *fname, const char *str, int bin) {
         g_string_free(newPath, TRUE);
     }
 
-    return _shadowtorpreload_getWorker()->vtable.write_str_to_file(fname, str, bin);
+    return _shadowtorpreload_getWorker()->active->vtable.write_str_to_file(fname, str, bin);
 }
 
 /* libevent family */
@@ -470,8 +498,8 @@ void evthread_set_id_callback(unsigned long (*id_fn)(void)) {
     if(!shadowtorpreloadGlobalState.libevent_id_fn && id_fn) {
         shadowtorpreloadGlobalState.libevent_id_fn = id_fn;
 
-        g_assert(_shadowtorpreload_getWorker()->vtable.evthread_set_id_callback != NULL);
-        _shadowtorpreload_getWorker()->vtable.evthread_set_id_callback(_shadowtorpreload_libevent_id);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.evthread_set_id_callback != NULL);
+        _shadowtorpreload_getWorker()->active->vtable.evthread_set_id_callback(_shadowtorpreload_libevent_id);
     }
 
     G_UNLOCK(shadowtorpreloadTrenaryLock);
@@ -498,8 +526,8 @@ int evthread_set_lock_callbacks(const struct evthread_lock_callbacks *cbs) {
         libevent_lock_wrappers.lock = _shadowtorpreload_libevent_lock_lock;
         libevent_lock_wrappers.unlock = _shadowtorpreload_libevent_lock_unlock;
 
-        g_assert(_shadowtorpreload_getWorker()->vtable.evthread_set_lock_callbacks != NULL);
-        ret = _shadowtorpreload_getWorker()->vtable.evthread_set_lock_callbacks(&libevent_lock_wrappers);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.evthread_set_lock_callbacks != NULL);
+        ret = _shadowtorpreload_getWorker()->active->vtable.evthread_set_lock_callbacks(&libevent_lock_wrappers);
     }
 
     G_UNLOCK(shadowtorpreloadTrenaryLock);
@@ -526,8 +554,8 @@ int evthread_set_condition_callbacks(const struct evthread_condition_callbacks *
         libevent_cond_wrappers.signal_condition = _shadowtorpreload_libevent_cond_signal;
         libevent_cond_wrappers.wait_condition = _shadowtorpreload_libevent_cond_wait;
 
-        g_assert(_shadowtorpreload_getWorker()->vtable.evthread_set_condition_callbacks != NULL);
-        ret = _shadowtorpreload_getWorker()->vtable.evthread_set_condition_callbacks(&libevent_cond_wrappers);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.evthread_set_condition_callbacks != NULL);
+        ret = _shadowtorpreload_getWorker()->active->vtable.evthread_set_condition_callbacks(&libevent_cond_wrappers);
     }
 
     G_UNLOCK(shadowtorpreloadTrenaryLock);
@@ -549,14 +577,14 @@ int crypto_early_init(void) {
 
     if(!shadowtorpreloadGlobalState.sslInitializedEarly) {
         shadowtorpreloadGlobalState.sslInitializedEarly = TRUE;
-        if(_shadowtorpreload_getWorker()->vtable.crypto_early_init != NULL) {
-            result = _shadowtorpreload_getWorker()->vtable.crypto_early_init();
+        if(_shadowtorpreload_getWorker()->active->vtable.crypto_early_init != NULL) {
+            result = _shadowtorpreload_getWorker()->active->vtable.crypto_early_init();
         }
     } else {
-        if(_shadowtorpreload_getWorker()->vtable.crypto_early_init != NULL) {
-            if (_shadowtorpreload_getWorker()->vtable.crypto_seed_rng(1) < 0)
+        if(_shadowtorpreload_getWorker()->active->vtable.crypto_early_init != NULL) {
+            if (_shadowtorpreload_getWorker()->active->vtable.crypto_seed_rng(1) < 0)
               result = -1;
-            if (_shadowtorpreload_getWorker()->vtable.crypto_init_siphash_key() < 0)
+            if (_shadowtorpreload_getWorker()->active->vtable.crypto_init_siphash_key() < 0)
               result = -1;
         }
     }
@@ -577,11 +605,11 @@ int crypto_global_init(int useAccel, const char *accelName, const char *accelDir
     gint result = 0;
     if(!shadowtorpreloadGlobalState.sslInitializedGlobal) {
         shadowtorpreloadGlobalState.sslInitializedGlobal = TRUE;
-        if(_shadowtorpreload_getWorker()->vtable.tor_ssl_global_init) {
-            _shadowtorpreload_getWorker()->vtable.tor_ssl_global_init();
+        if(_shadowtorpreload_getWorker()->active->vtable.tor_ssl_global_init) {
+            _shadowtorpreload_getWorker()->active->vtable.tor_ssl_global_init();
         }
-        if(_shadowtorpreload_getWorker()->vtable.crypto_global_init) {
-            result = _shadowtorpreload_getWorker()->vtable.crypto_global_init(useAccel, accelName, accelDir);
+        if(_shadowtorpreload_getWorker()->active->vtable.crypto_global_init) {
+            result = _shadowtorpreload_getWorker()->active->vtable.crypto_global_init(useAccel, accelName, accelDir);
         }
     }
 
@@ -598,8 +626,8 @@ int crypto_global_cleanup(void) {
 
     gint result = 0;
     if(--shadowtorpreloadGlobalState.nTorCryptoNodes == 0) {
-        if(_shadowtorpreload_getWorker()->vtable.crypto_global_cleanup) {
-            result = _shadowtorpreload_getWorker()->vtable.crypto_global_cleanup();
+        if(_shadowtorpreload_getWorker()->active->vtable.crypto_global_cleanup) {
+            result = _shadowtorpreload_getWorker()->active->vtable.crypto_global_cleanup();
         }
     }
 
@@ -719,8 +747,8 @@ void CRYPTO_set_id_callback(unsigned long (*func)(void)) {
     G_LOCK(shadowtorpreloadTrenaryLock);
     if(!shadowtorpreloadGlobalState.crypto_id_fn && func) {
         shadowtorpreloadGlobalState.crypto_id_fn = func;
-        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_id_callback != NULL);
-        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_id_callback(_shadowtorpreload_getIDFunc);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_id_callback != NULL);
+        _shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_id_callback(_shadowtorpreload_getIDFunc);
     }
     G_UNLOCK(shadowtorpreloadTrenaryLock);
     interposer_enable();
@@ -731,8 +759,8 @@ void CRYPTO_set_locking_callback(void (*func)(int mode,int type, const char *fil
     G_LOCK(shadowtorpreloadTrenaryLock);
     if(!shadowtorpreloadGlobalState.crypto_lock_fn && func) {
         shadowtorpreloadGlobalState.crypto_lock_fn = func;
-        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_locking_callback != NULL);
-        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_locking_callback(_shadowtorpreload_cryptoLockingFunc);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_locking_callback != NULL);
+        _shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_locking_callback(_shadowtorpreload_cryptoLockingFunc);
     }
     G_UNLOCK(shadowtorpreloadTrenaryLock);
     interposer_enable();
@@ -743,8 +771,8 @@ void CRYPTO_set_dynlock_create_callback(struct CRYPTO_dynlock_value *(*dyn_creat
     G_LOCK(shadowtorpreloadTrenaryLock);
     if(!shadowtorpreloadGlobalState.crypto_dyn_create_function && dyn_create_function) {
         shadowtorpreloadGlobalState.crypto_dyn_create_function = dyn_create_function;
-        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_create_callback != NULL);
-        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_create_callback(_shadowtorpreload_dynlock_create);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_dynlock_create_callback != NULL);
+        _shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_dynlock_create_callback(_shadowtorpreload_dynlock_create);
     }
     G_UNLOCK(shadowtorpreloadTrenaryLock);
     interposer_enable();
@@ -755,8 +783,8 @@ void CRYPTO_set_dynlock_lock_callback(void (*dyn_lock_function)(int mode, struct
     G_LOCK(shadowtorpreloadTrenaryLock);
     if(!shadowtorpreloadGlobalState.crypto_dyn_lock_function && dyn_lock_function) {
         shadowtorpreloadGlobalState.crypto_dyn_lock_function = dyn_lock_function;
-        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_lock_callback != NULL);
-        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_lock_callback(_shadowtorpreload_dynlock_lock);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_dynlock_lock_callback != NULL);
+        _shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_dynlock_lock_callback(_shadowtorpreload_dynlock_lock);
     }
     G_UNLOCK(shadowtorpreloadTrenaryLock);
     interposer_enable();
@@ -767,8 +795,8 @@ void CRYPTO_set_dynlock_destroy_callback(void (*dyn_destroy_function)(struct CRY
     G_LOCK(shadowtorpreloadTrenaryLock);
     if(!shadowtorpreloadGlobalState.crypto_dyn_destroy_function && dyn_destroy_function) {
         shadowtorpreloadGlobalState.crypto_dyn_destroy_function = dyn_destroy_function;
-        g_assert(_shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_destroy_callback != NULL);
-        _shadowtorpreload_getWorker()->vtable.CRYPTO_set_dynlock_destroy_callback(_shadowtorpreload_dynlock_destroy);
+        g_assert(_shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_dynlock_destroy_callback != NULL);
+        _shadowtorpreload_getWorker()->active->vtable.CRYPTO_set_dynlock_destroy_callback(_shadowtorpreload_dynlock_destroy);
     }
     G_UNLOCK(shadowtorpreloadTrenaryLock);
     interposer_enable();
