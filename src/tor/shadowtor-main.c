@@ -17,7 +17,8 @@
 
 extern int tor_main(int argc, char *argv[]);
 extern void shadowtorpreload_init(GModule*, int);
-extern void shadowtorpreload_clear(void);
+extern void shadowtorpreload_setActive(GModule*);
+extern void shadowtorpreload_clear(GModule*);
 extern const RAND_METHOD* RAND_get_rand_method();
 
 typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
@@ -103,16 +104,21 @@ int main(int argc, char *argv[]) {
     return _shadowtor_run(argc, argv);
 }
 
-/* called immediately after the plugin is loaded. shadow loads plugins once for
- * each worker thread. the GModule* is needed as a handle for g_module_symbol()
- * symbol lookups.
- * return NULL for success, or a string describing the error */
-const gchar* g_module_check_init(GModule *module) {
+/**
+ * The following functions are called in the "Shadow" context, meaning that
+ * anything executed inside of these functions will not be intercepted or
+ * handled in any way by Shadow.
+ */
+
+/* called immediately after Shadow opens this plug-in library */
+void __shadow_plugin_load__(void* handle) {
     /* how many locks does openssl want */
     int nLocks = CRYPTO_num_locks();
 
     /* initialize the preload lib, and its openssl thread handling */
-    shadowtorpreload_init(module, nLocks);
+    shadowtorpreload_init((GModule*)handle, nLocks);
+
+    shadowtorpreload_setActive((GModule*)handle);
 
     /* make sure openssl uses Shadow's random sources and make crypto thread-safe
      * get function pointers through LD_PRELOAD */
@@ -129,15 +135,26 @@ const gchar* g_module_check_init(GModule *module) {
     int libev_error_code = evthread_use_pthreads();
     if(libev_error_code != 0) {
         fprintf(stderr, "Error %i initializing libevent threading: %s\n", libev_error_code, strerror(errno));
-        return "Error initializing libevent threading";
-    } else {
-        /* success */
-        return NULL;
     }
+
+    shadowtorpreload_setActive(NULL);
 }
 
-/* called immediately after the plugin is unloaded. shadow unloads plugins
- * once for each worker thread. */
-void g_module_unload(GModule *module) {
-    shadowtorpreload_clear();
+/* called immediately before Shadow closes this plug-in library */
+void __shadow_plugin_unload__(void* handle) {
+    shadowtorpreload_clear((GModule*)handle);
+}
+
+/* called before Shadow yields control of execution to the plug-in.
+ * this happens when, e.g., a plug-in that made a blocking read() on a socket
+ * and now the socket has data available so the read() call will return. */
+void __shadow_plugin_enter__(void* handle) {
+    shadowtorpreload_setActive((GModule*)handle);
+}
+
+/* called after Shadow regains control of execution from the plug-in.
+ * this happens when, e.g., a plug-in makes a blocking read() on a socket
+ * that does not currently have any data available. */
+void __shadow_plugin_exit__(void* handle) {
+    shadowtorpreload_setActive(NULL);
 }
