@@ -132,6 +132,18 @@ def main():
         action="append", dest="tor_libraries",
         default=[])
 
+    parser_build.add_argument('--tor-config-options',
+        help="append options to Tor's configure script",
+        metavar="OPTS",
+        action="append", dest="tor_config_opts",
+        default=[])
+
+    parser_build.add_argument('--tor-config-cflags',
+        help="append cflags to Tor's configure script",
+        metavar="CFLAGS",
+        action="append", dest="tor_config_cflags",
+        default=[])
+
     parser_build.add_argument('--libevent-prefix',
         help="use non-standard PATH when linking Tor to libevent.",
         metavar="PATH",
@@ -419,6 +431,7 @@ def setup_tor(args):
             if args.extra_includes is not None:
                 for i in args.extra_includes: cflags += " -I" + i.strip()
             if args.do_debug: cflags += " -g"
+            if args.tor_config_cflags: cflags += " " + " ".join(args.tor_config_cflags)
 
             ldflags = ""
             if args.extra_libraries is not None:
@@ -434,6 +447,7 @@ def setup_tor(args):
             if args.openssl_prefix is not None: configure += " --with-openssl-dir=" + getfullpath(args.openssl_prefix)
             if args.static_openssl: configure += " --enable-static-openssl"
             if args.static_libevent: configure += " --enable-static-libevent"
+            if args.tor_config_opts: configure += " " + " ".join(args.tor_config_opts)
 
             # generate configure script
             if os.path.exists(args.tordir+"/configure"):
