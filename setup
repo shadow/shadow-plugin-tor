@@ -120,6 +120,11 @@ def main():
         action="store_true", dest="do_test",
         default=False)
 
+    parser_build.add_argument('--tor-tracing',
+        help="add necessary build options to compile Tor tracing feature for Shadow",
+        action="store_true", dest="do_tor_tracing",
+        default=False)
+
     parser_build.add_argument('--tor-prefix',
         help="PATH to a custom base Tor directory to build (overrides '--tor-version')",
         metavar="PATH",
@@ -140,13 +145,13 @@ def main():
 
     parser_build.add_argument('--tor-config-option',
         help="append option to Tor's configure script",
-        metavar="OPTS",
+        metavar="OPT",
         action="append", dest="tor_config_opts",
         default=[])
 
     parser_build.add_argument('--tor-config-cflag',
         help="append cflag to Tor's configure script",
-        metavar="CFLAGS",
+        metavar="CFLAG",
         action="append", dest="tor_config_cflags",
         default=[])
 
@@ -439,6 +444,7 @@ def setup_tor(args):
         if not os.path.exists(args.tordir+"/orconfig.h"):
 
             opts = " ".join(args.tor_config_opts)
+            if args.do_tor_tracing: opts += " --enable-shadow-tracing"
 
             cflags = "-fPIC -fno-inline"
             if args.extra_includes is not None:
