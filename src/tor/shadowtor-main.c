@@ -90,9 +90,6 @@ static int _shadowtor_run(int argc, char *argv[]) {
     }
 
     /* cleanup before return */
-    if (homedir_str) {
-        free(homedir_str);
-    }
     if (hostname_str) {
         free(hostname_str);
     }
