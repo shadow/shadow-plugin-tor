@@ -169,7 +169,6 @@ add_definitions(-DLOCALSTATEDIR="/usr/local/var" -DSHARE_DATADIR="/usr/local/var
 add_definitions(-DED25519_CUSTOMRANDOM -DED25519_SUFFIX=_donna)
 remove_definitions(-DNDEBUG)
 
-
 ## disable warnings from tor code, add other options
 add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 
