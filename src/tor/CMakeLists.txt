@@ -21,7 +21,6 @@ include_directories(${TOR_ROOT_DIR}/src/or)
 include_directories(${TOR_ROOT_DIR}/src/ext)
 include_directories(${TOR_ROOT_DIR}/src/ext/trunnel)
 include_directories(${TOR_ROOT_DIR}/src/trunnel)
-include_directories(${TOR_ROOT_DIR}/src/trace)
 
 include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INCLUDES} ${EVENT2_INCLUDES} ${OPENSSL_INCLUDES} ${TOR_INCLUDES})
 
@@ -145,7 +144,15 @@ list(REMOVE_ITEM toror_sources
 
 aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 
-aux_source_directory(${TOR_ROOT_DIR}/src/trace tortrace_sources)
+# store additional sources so files can be variably included
+set(additional_sources "")
+
+# add tor tracing directory, if enabled
+if(TOR_TRACING STREQUAL ON)
+    include_directories(${TOR_ROOT_DIR}/src/trace)
+    aux_source_directory(${TOR_ROOT_DIR}/src/trace tortrace_sources)
+    list(APPEND additional_sources ${tortrace_sources})
+endif(TOR_TRACING STREQUAL ON)
 
 ## get tor header files -- we dont need this for now
 #file(GLOB tor_headers ${TOR_ROOT_DIR}/*.h)
@@ -170,7 +177,7 @@ add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 add_shadow_plugin(shadow-plugin-tor 
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
-    ${tortrunnel_sources} ${torexttrunnel_sources} ${tortrace_sources})
+    ${tortrunnel_sources} ${torexttrunnel_sources} ${additional_sources})
 add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
 target_link_libraries(shadow-plugin-tor shadow-preload-tor
