@@ -83,6 +83,12 @@ def main():
         action="append", dest="extra_libraries",
         default=[INSTALL_PREFIX+ "/lib", os.path.expanduser("~/.local/lib")])
 
+    parser_build.add_argument('-D', '--define',
+        help="append DEF to the list of define flags. useful when compiling a custom Tor with --tor-prefix",
+        metavar="DEF",
+        action="append", dest="extra_defines",
+        default=[])
+
     parser_build.add_argument('-c', '--clean',
         help="force a full rebuild by removing build cache",
         action="store_true", dest="do_force_rebuild",
@@ -114,6 +120,11 @@ def main():
         action="store_true", dest="do_test",
         default=False)
 
+    parser_build.add_argument('--tor-tracing',
+        help="add necessary build options to compile Tor tracing feature for Shadow",
+        action="store_true", dest="do_tor_tracing",
+        default=False)
+
     parser_build.add_argument('--tor-prefix',
         help="PATH to a custom base Tor directory to build (overrides '--tor-version')",
         metavar="PATH",
@@ -130,6 +141,18 @@ def main():
         help="append LIB to the list of libraries that get linked with shadow-plugin-tor. Useful when compiling and linking custom libraries.",
         metavar="LIB",
         action="append", dest="tor_libraries",
+        default=[])
+
+    parser_build.add_argument('--tor-config-option',
+        help="append option to Tor's configure script",
+        metavar="OPT",
+        action="append", dest="tor_config_opts",
+        default=[])
+
+    parser_build.add_argument('--tor-config-cflag',
+        help="append cflag to Tor's configure script",
+        metavar="CFLAG",
+        action="append", dest="tor_config_cflags",
         default=[])
 
     parser_build.add_argument('--libevent-prefix',
@@ -273,6 +296,7 @@ def build(args):
     if args.do_profile: cmake_cmd += " -DSHADOW_PROFILE=ON"
     if args.export_libraries: cmake_cmd += " -DSHADOW_EXPORT=ON"
     if args.enable_evpcipher: cmake_cmd += " -DSHADOW_ENABLE_EVPCIPHER=ON"
+    if args.do_tor_tracing: cmake_cmd += " -DTOR_TRACING=ON"
 
     # we will run from build directory
     calledDirectory = os.getcwd()
@@ -307,10 +331,14 @@ def build(args):
     make_paths_absolute(args.extra_includes)
     make_paths_absolute(args.extra_libraries)
 
+    # add '-D' to defines
+    extra_defines = [ '-D' + d.strip() for d in args.extra_defines]
+
     # make sure we can access them from cmake
-    cmake_cmd += " -DCMAKE_EXTRA_INCLUDES=" + ';'.join(args.extra_includes)
-    cmake_cmd += " -DCMAKE_EXTRA_LIBRARIES=" + ';'.join(args.extra_libraries)
-    cmake_cmd += " -DCMAKE_TOR_LIBRARIES=" + ';'.join(args.tor_libraries)
+    cmake_cmd += " -DCMAKE_EXTRA_INCLUDES="    + ';'.join(args.extra_includes)
+    cmake_cmd += " -DCMAKE_EXTRA_LIBRARIES="   + ';'.join(args.extra_libraries)
+    cmake_cmd += " -DCMAKE_EXTRA_DEFINES="     + ';'.join(extra_defines)
+    cmake_cmd += " -DCMAKE_TOR_LIBRARIES="     + ';'.join(args.tor_libraries)
 
     # look for the clang/clang++ compilers
     clangccpath = which("clang")
@@ -415,10 +443,17 @@ def setup_tor(args):
     if os.path.exists(args.tordir):
         os.chdir(args.tordir)
         if not os.path.exists(args.tordir+"/orconfig.h"):
+
+            opts = " ".join(args.tor_config_opts)
+            if args.do_tor_tracing: opts += " --enable-shadow-tracing"
+
             cflags = "-fPIC -fno-inline"
             if args.extra_includes is not None:
                 for i in args.extra_includes: cflags += " -I" + i.strip()
             if args.do_debug: cflags += " -g"
+            if args.tor_config_cflags: cflags += " " + " ".join(args.tor_config_cflags)
+            if args.extra_defines: 
+                for d in args.extra_defines: cflags += " -D" + d.strip()
 
             ldflags = ""
             if args.extra_libraries is not None:
@@ -428,7 +463,7 @@ def setup_tor(args):
             if len(args.tor_libraries) > 0:
                 for l in args.tor_libraries: libs += " -l" + l.strip()
 
-            configure = "./configure --disable-transparent --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests CFLAGS=\"{0}\" LDFLAGS=\"{1}\" LIBS=\"{2}\"".format(cflags, ldflags, libs)
+            configure = "./configure --disable-transparent --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests {0} CFLAGS=\"{1}\" LDFLAGS=\"{2}\" LIBS=\"{3}\"".format(opts, cflags, ldflags, libs)
 
             if args.libevent_prefix is not None: configure += " --with-libevent-dir=" + getfullpath(args.libevent_prefix)
             if args.openssl_prefix is not None: configure += " --with-openssl-dir=" + getfullpath(args.openssl_prefix)

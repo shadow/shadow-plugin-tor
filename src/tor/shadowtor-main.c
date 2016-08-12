@@ -90,9 +90,13 @@ static int _shadowtor_run(int argc, char *argv[]) {
     }
 
     /* cleanup before return */
-    if (homedir_str) {
-        free(homedir_str);
-    }
+
+    /* We get the homedir_str from glib right now, which seems to be returning
+     * a pointer to the text area of memory. Therefore, we do not need to free
+     * homedir_str */
+    //if (homedir_str) {
+    //   free(homedir_str);
+    //}
     if (hostname_str) {
         free(hostname_str);
     }

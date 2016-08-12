@@ -93,6 +93,9 @@ if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} E
     message(STATUS "Added definition STARTUP_Q_PARAM")
 endif()
 
+# add any extra defines
+add_definitions(${CMAKE_EXTRA_DEFINES})
+
 ## get tor source files, but ignore some of them
 aux_source_directory(${TOR_ROOT_DIR}/src/common torcommon_sources)
 list(REMOVE_ITEM torcommon_sources 
@@ -141,6 +144,16 @@ list(REMOVE_ITEM toror_sources
 
 aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 
+# store additional sources so files can be variably included
+set(additional_sources "")
+
+# add tor tracing directory, if enabled
+if(TOR_TRACING STREQUAL ON)
+    include_directories(${TOR_ROOT_DIR}/src/trace)
+    aux_source_directory(${TOR_ROOT_DIR}/src/trace tortrace_sources)
+    list(APPEND additional_sources ${tortrace_sources})
+endif(TOR_TRACING STREQUAL ON)
+
 ## get tor header files -- we dont need this for now
 #file(GLOB tor_headers ${TOR_ROOT_DIR}/*.h)
 #file(GLOB toror_headers ${TOR_ROOT_DIR}/src/or/*.h)
@@ -163,7 +176,7 @@ add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 add_shadow_plugin(shadow-plugin-tor 
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
-    ${tortrunnel_sources} ${torexttrunnel_sources})
+    ${tortrunnel_sources} ${torexttrunnel_sources} ${additional_sources})
 add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
 target_link_libraries(shadow-plugin-tor shadow-preload-tor
@@ -172,6 +185,7 @@ target_link_libraries(shadow-plugin-tor shadow-preload-tor
 
 foreach(lib ${CMAKE_TOR_LIBRARIES})
     target_link_libraries(shadow-plugin-tor ${lib})
+    message(STATUS "Linked " ${lib} " to shadow-plugin-tor")
 endforeach(lib ${CMAKE_TOR_LIBRARIES})
 
 install(TARGETS shadow-plugin-tor DESTINATION plugins)
