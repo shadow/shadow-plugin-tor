@@ -126,26 +126,28 @@ def process_tor_log(filename):
     boot_succeeded = False
 
     for line in source:
-        if name is None and re.search("Starting torctl program on host", line) is not None:
-            parts = line.strip().split()
-            if len(parts) < 11: continue
-            name = parts[10]
-        elif not boot_succeeded and re.search("Bootstrapped 100", line) is not None:
-            boot_succeeded = True
-        elif boot_succeeded and re.search("\s650\sBW\s", line) is not None:
-            parts = line.strip().split()
-            if len(parts) < 11: continue
-            if 'Outbound' in line: print line
-            second = int(float(parts[2]))
-            bwr = int(parts[9])
-            bww = int(parts[10])
+        try:
+            if name is None and re.search("Starting torctl program on host", line) is not None:
+                parts = line.strip().split()
+                if len(parts) < 11: continue
+                name = parts[10]
+            elif not boot_succeeded and re.search("Bootstrapped 100", line) is not None:
+                boot_succeeded = True
+            elif boot_succeeded and re.search("\s650\sBW\s", line) is not None:
+                parts = line.strip().split()
+                if len(parts) < 11: continue
+                if 'Outbound' in line: print line
+                second = int(float(parts[2]))
+                bwr = int(parts[9])
+                bww = int(parts[10])
 
-            if second not in d['bytes_read']: d['bytes_read'][second] = 0
-            d['bytes_read'][second] += bwr
-            total_read += bwr
-            if second not in d['bytes_written']: d['bytes_written'][second] = 0
-            d['bytes_written'][second] += bww
-            total_write += bww
+                if second not in d['bytes_read']: d['bytes_read'][second] = 0
+                d['bytes_read'][second] += bwr
+                total_read += bwr
+                if second not in d['bytes_written']: d['bytes_written'][second] = 0
+                d['bytes_written'][second] += bww
+                total_write += bww
+        except: continue # data format error
 
     if name is None: name = os.path.dirname(filename)
 
