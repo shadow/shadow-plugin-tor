@@ -56,7 +56,7 @@ endif()
 include_directories(${SHADOW_ROOT}/include)
 
 ## by default, install to SHADOW_ROOT
-if(NOT ${CMAKE_INSTALL_PREFIX})
+if("${CMAKE_INSTALL_PREFIX}" STREQUAL "")
     set(CMAKE_INSTALL_PREFIX "${SHADOW_ROOT}")
 endif()
 ## by default, search SHADOW_ROOT first for custom libs
