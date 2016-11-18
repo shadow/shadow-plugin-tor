@@ -133,6 +133,25 @@ list(REMOVE_ITEM torexteddon_sources
 
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel torexttrunnel_sources)
 
+# force use of c compiler instead of cxx for keccak
+set(torkeccak "")
+if(((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 9 AND ${TOR_VERSION_D} GREATER 0) OR
+    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 9) OR
+    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 2) OR
+    (${TOR_VERSION_A} GREATER 0)) AND
+    EXISTS ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    # the following doesn't stick, i think because the src file is not in the current dir
+    #set(torkeccak ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    #set_source_file_properties(${torkeccak} PROPERTIES LANGUAGE C)
+
+    # work around the above problem by creating a target and setting the language on that
+    # the only reason this works is because there is no state in keccak 
+    # and so it doesnt need to be built with llvm
+    include_directories(${TOR_ROOT_DIR}/src/ext/keccak-tiny)
+    add_library(torkeccak STATIC ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    set_target_properties(torkeccak PROPERTIES LANGUAGE C)
+endif()
+
 aux_source_directory(${TOR_ROOT_DIR}/src/or toror_sources)
 list(REMOVE_ITEM toror_sources 
     ${TOR_ROOT_DIR}/src/or/ntmain.c
@@ -164,11 +183,11 @@ add_shadow_plugin(shadow-plugin-tor
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
     ${tortrunnel_sources} ${torexttrunnel_sources})
-add_dependencies(shadow-plugin-tor shadow-preload-tor)
+add_dependencies(shadow-plugin-tor shadow-preload-tor torkeccak)
 
 target_link_libraries(shadow-plugin-tor shadow-preload-tor
     ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
-    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
+    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} torkeccak -lpthread)
 
 foreach(lib ${CMAKE_TOR_LIBRARIES})
     target_link_libraries(shadow-plugin-tor ${lib})
