@@ -145,10 +145,8 @@ list(REMOVE_ITEM torexteddon_sources
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel torexttrunnel_sources)
 
 # force use of c compiler instead of cxx for keccak
-set(torkeccak "")
 check_tor_version(version_check_passed 0 2 9 1)
 if(version_check_passed AND (EXISTS ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c))
-    message(STATUS "got it!")
     # the following doesn't stick, i think because the src file is not in the current dir
     #set(torkeccak ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
     #set_source_file_properties(${torkeccak} PROPERTIES LANGUAGE C)
@@ -159,8 +157,6 @@ if(version_check_passed AND (EXISTS ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-t
     include_directories(${TOR_ROOT_DIR}/src/ext/keccak-tiny)
     add_library(torkeccak STATIC ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
     set_target_properties(torkeccak PROPERTIES LANGUAGE C)
-else()
-    message(STATUS "nopers!")
 endif()
 
 aux_source_directory(${TOR_ROOT_DIR}/src/or toror_sources)
@@ -194,11 +190,19 @@ add_shadow_plugin(shadow-plugin-tor
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
     ${tortrunnel_sources} ${torexttrunnel_sources})
-add_dependencies(shadow-plugin-tor shadow-preload-tor torkeccak)
+add_dependencies(shadow-plugin-tor shadow-preload-tor)
+
+if(TARGET torkeccak)
+    add_dependencies(shadow-plugin-tor torkeccak)
+endif()
 
 target_link_libraries(shadow-plugin-tor shadow-preload-tor
     ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
-    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} torkeccak -lpthread)
+    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
+
+if(TARGET torkeccak)
+    target_link_libraries(shadow-plugin-tor torkeccak)
+endif()
 
 foreach(lib ${CMAKE_TOR_LIBRARIES})
     target_link_libraries(shadow-plugin-tor ${lib})
