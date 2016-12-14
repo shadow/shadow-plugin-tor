@@ -31,6 +31,17 @@ set(TOR_VERSION "${TOR_VERSION_A}.${TOR_VERSION_B}.${TOR_VERSION_C}.${TOR_VERSIO
 MESSAGE(STATUS "Found Tor path = ${TOR_ROOT_DIR}")
 MESSAGE(STATUS "Found Tor version = ${TOR_VERSION}")
 
+macro(check_tor_version retval major minor micro patch)
+    if((${TOR_VERSION_A} EQUAL ${major} AND ${TOR_VERSION_B} EQUAL ${minor} AND ${TOR_VERSION_C} EQUAL ${micro} AND ${TOR_VERSION_D} GREATER ${patch}) OR
+    (${TOR_VERSION_A} EQUAL ${major} AND ${TOR_VERSION_B} EQUAL ${minor} AND ${TOR_VERSION_C} GREATER ${micro}) OR
+    (${TOR_VERSION_A} EQUAL ${major} AND ${TOR_VERSION_B} GREATER ${minor}) OR
+    (${TOR_VERSION_A} GREATER ${major}))
+        set(${retval} true)
+    else()
+        set(${retval} false)
+    endif()
+endmacro(check_tor_version)
+
 ## check env to see if we should allow interposition ion EVP_Cipher
 if(SHADOW_ENABLE_EVPCIPHER STREQUAL ON)
     add_definitions(-DSHADOW_ENABLE_EVPCIPHER)
@@ -39,56 +50,56 @@ endif(SHADOW_ENABLE_EVPCIPHER STREQUAL ON)
 
 ## Version-specific defines to handle changes to Tor's functionality
 # version >= 0.2.2.17, commit a2bb0bfdd5731ef3cebf6e14fa7bebb98d5f2d8f
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 2 AND ${TOR_VERSION_D} GREATER 16) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 2))
+check_tor_version(version_check_passed 0 2 2 17)
+if(version_check_passed)
     add_definitions(-DSCALLION_NEWIDKEYNAME)
     message(STATUS "Added definition SCALLION_NEWIDKEYNAME")
 endif()
 # version >= 0.2.3.5
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 3 AND ${TOR_VERSION_D} GREATER 4) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 3))
+check_tor_version(version_check_passed 0 2 3 5)
+if(version_check_passed)
     add_definitions(-DSCALLION_DOREFILLCALLBACKS)
 	message(STATUS "Added definition SCALLION_DOREFILLCALLBACKS")
 endif()
 # version >= 0.2.3.10, commit 26e789fbfd4e5a7e2789c1577e8eb967de3eba86
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 3 AND ${TOR_VERSION_D} GREATER 9) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 3))
+check_tor_version(version_check_passed 0 2 3 10)
+if(version_check_passed)
     add_definitions(-DSCALLION_NEWCRYPTODEFS)
     message(STATUS "Added definition SCALLION_NEWCRYPTODEFS")
 endif()
 # version >= 0.2.4.8
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 4 AND ${TOR_VERSION_D} GREATER 7) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 4))
+check_tor_version(version_check_passed 0 2 4 8)
+if(version_check_passed)
     add_definitions(-DSCALLION_USEV2CPUWORKER)
 	message(STATUS "Added definition SCALLION_USEV2CPUWORKER")
 endif()
 # version >= 0.2.4.10
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 4 AND ${TOR_VERSION_D} GREATER 9) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 4))
+check_tor_version(version_check_passed 0 2 4 10)
+if(version_check_passed)
     add_definitions(-DSCALLION_USEV2CPUWORKERTIMING)
     message(STATUS "Added definition SCALLION_USEV2CPUWORKERTIMING")
 endif()
 # version >= 0.2.4.11
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 4 AND ${TOR_VERSION_D} GREATER 10) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 4))
+check_tor_version(version_check_passed 0 2 4 11)
+if(version_check_passed)
     add_definitions(-DSCALLION_LOGVWITHSUFFIX)
     message(STATUS "Added definition SCALLION_LOGVWITHSUFFIX")
 endif()
 # version >= 0.2.5.2
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 5 AND ${TOR_VERSION_D} GREATER 1) OR 
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 5))
+check_tor_version(version_check_passed 0 2 5 2)
+if(version_check_passed)
     add_definitions(-DSCALLION_NOV2DIR)
     message(STATUS "Added definition SCALLION_NOV2DIR")
 endif()
 # version >= 0.2.5.5, commit 39d4e67be8283b2a7141a7aa8342d30e27f47e6f
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 5 AND ${TOR_VERSION_D} GREATER 5) OR
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 5))
+check_tor_version(version_check_passed 0 2 5 5)
+if(version_check_passed)
     add_definitions(-DSCALLION_MEMPOOLOPT)
     message(STATUS "Added definition SCALLION_MEMPOOLOPT")
 endif()
 # version >= 0.2.6.1, commit 39d4e67be8283b2a7141a7aa8342d30e27f47e6f
-if((${TOR_VERSION_A} EQUAL 0 AND ${TOR_VERSION_B} EQUAL 2 AND ${TOR_VERSION_C} EQUAL 6 AND ${TOR_VERSION_D} GREATER 0) OR
-    (${TOR_VERSION_A} GREATER -1 AND ${TOR_VERSION_B} GREATER 1 AND ${TOR_VERSION_C} GREATER 6))
+check_tor_version(version_check_passed 0 2 6 1)
+if(version_check_passed)
     add_definitions(-DSTARTUP_Q_PARAM)
     message(STATUS "Added definition STARTUP_Q_PARAM")
 endif()
@@ -136,6 +147,21 @@ list(REMOVE_ITEM torexteddon_sources
 
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel torexttrunnel_sources)
 
+# force use of c compiler instead of cxx for keccak
+check_tor_version(version_check_passed 0 2 9 1)
+if(version_check_passed AND (EXISTS ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c))
+    # the following doesn't stick, i think because the src file is not in the current dir
+    #set(torkeccak ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    #set_source_file_properties(${torkeccak} PROPERTIES LANGUAGE C)
+
+    # work around the above problem by creating a target and setting the language on that
+    # the only reason this works is because there is no state in keccak 
+    # and so it doesnt need to be built with llvm
+    include_directories(${TOR_ROOT_DIR}/src/ext/keccak-tiny)
+    add_library(torkeccak STATIC ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    set_target_properties(torkeccak PROPERTIES LANGUAGE C)
+endif()
+
 aux_source_directory(${TOR_ROOT_DIR}/src/or toror_sources)
 list(REMOVE_ITEM toror_sources 
     ${TOR_ROOT_DIR}/src/or/ntmain.c
@@ -179,9 +205,17 @@ add_shadow_plugin(shadow-plugin-tor
     ${tortrunnel_sources} ${torexttrunnel_sources} ${additional_sources})
 add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
+if(TARGET torkeccak)
+    add_dependencies(shadow-plugin-tor torkeccak)
+endif()
+
 target_link_libraries(shadow-plugin-tor shadow-preload-tor
     ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
     ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
+
+if(TARGET torkeccak)
+    target_link_libraries(shadow-plugin-tor torkeccak)
+endif()
 
 foreach(lib ${CMAKE_TOR_LIBRARIES})
     target_link_libraries(shadow-plugin-tor ${lib})
