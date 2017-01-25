@@ -60,7 +60,8 @@ static gint _torctl_parseBootstrapProgress(gchar* line) {
 	gchar** parts = g_strsplit(line, " ", 0);
 	gchar* part = NULL;
 	gboolean foundBootstrap = FALSE;
-	for(gint j = 0; (part = parts[j]) != NULL; j++) {
+	gint j = 0;
+	for(j = 0; (part = parts[j]) != NULL; j++) {
 		gchar** subparts = g_strsplit(part, "=", 0);
 		if(!g_ascii_strncasecmp(subparts[0], "BOOTSTRAP", 9)) {
 			foundBootstrap = TRUE;
@@ -204,7 +205,8 @@ static void _torctl_activate(TorCTL* torctl, uint32_t events) {
 
 			gchar** lines = g_strsplit(recvbuf, "\r\n", 0);
 			guint numLines = g_strv_length(lines);
-			for(gint i = 0; i < numLines; i++) {
+			gint i = 0;
+			for(i = 0; i < numLines; i++) {
 				g_assert(lines[i] != NULL);
 
 				/* lines ending in '\r\n\r\n' result in an empty string token we should ignore */
@@ -364,7 +366,8 @@ void torctl_ready(TorCTL* torctl) {
 	if(nfds == -1) {
 		torctl->slogf(G_LOG_LEVEL_CRITICAL, __FUNCTION__, "error in epoll_wait");
 	} else {
-		for(gint i = 0; i < nfds; i++) {
+	    gint i = 0;
+		for(i = 0; i < nfds; i++) {
 			gint d = epevs[i].data.fd;
 			g_assert(d == torctl->sd);
 			uint32_t e = epevs[i].events;

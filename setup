@@ -17,7 +17,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
 BUILD_PREFIX="./build"
 INSTALL_PREFIX=os.path.expanduser("~/.shadow")
 
-TOR_DEFAULT_VERSION="0.2.8.9"
+TOR_DEFAULT_VERSION="0.2.9.9"
 TOR_URL="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz".format(TOR_DEFAULT_VERSION)
 TOR_URL_SIG="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz.asc".format(TOR_DEFAULT_VERSION)
 
@@ -108,7 +108,7 @@ def main():
         help="number of jobs to run simultaneously during the build",
         metavar="N", type=int,
         action="store", dest="njobs",
-        default=multiprocessing.cpu_count())
+        default=1)#multiprocessing.cpu_count())
 
     parser_build.add_argument('-o', '--profile',
         help="build in gprof profiling information when running Shadow",
@@ -339,20 +339,6 @@ def build(args):
     cmake_cmd += " -DCMAKE_EXTRA_LIBRARIES="   + ';'.join(args.extra_libraries)
     cmake_cmd += " -DCMAKE_EXTRA_DEFINES="     + ';'.join(extra_defines)
     cmake_cmd += " -DCMAKE_TOR_LIBRARIES="     + ';'.join(args.tor_libraries)
-
-    # look for the clang/clang++ compilers
-    clangccpath = which("clang")
-    if clangccpath is None:
-        log("ERROR: can't find 'clang' compiler in your PATH! Is it installed? (Do you want the 'dependencies' subcommand?)")
-    clangcxxpath = which("clang++")
-    if clangcxxpath is None:
-        log("ERROR: can't find 'clang++' compiler in your PATH! Is it installed? (Do you want the 'dependencies' subcommand?)")
-    if clangccpath is None or clangcxxpath is None: return -1
-
-    # set clang/llvm as compiler
-    os.putenv("CC", clangccpath)
-    os.putenv("CXX", clangcxxpath)
-    #cmake_cmd += " -D_CMAKE_TOOLCHAIN_PREFIX=llvm-"
 
     # call cmake to configure the make process, wait for completion
     logging.info("running \'{0}\' from \'{1}\'".format(cmake_cmd, os.getcwd()))

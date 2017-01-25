@@ -79,20 +79,10 @@ if(EXISTS "${SHADOW_ROOT}/share/cmake/Modules")
 endif()
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/" ${CMAKE_MODULE_PATH})
 message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
+
 include_directories(${CMAKE_MODULE_PATH})
-
-## we need to use LLVM to build the plug-ins
-set(LLVMHoistGlobalsPATH "${SHADOW_ROOT}/lib/LLVMHoistGlobals.so")
-if(EXISTS "${LLVMHoistGlobalsPATH}")
-    message(STATUS "LLVMHoistGlobalsPATH = ${LLVMHoistGlobalsPATH}")
-else()
-    message(FATAL_ERROR "LLVMHoistGlobalsPATH path does not exist: '${LLVMHoistGlobalsPATH}'")
-endif()
-include(LLVMTools)
-add_custom_target(LLVMHoistGlobals)
-
-## the plug-ins need to include shd-library.h and cmake files from shadow
 include_directories(${SHADOW_ROOT}/include)
+include(ShadowTools)
 
 ## plug-ins need to disable fortification to ensure syscalls are intercepted
 #add_definitions(-D_GNU_SOURCE)

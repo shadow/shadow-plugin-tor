@@ -275,6 +275,8 @@ def generate(args):
 
     # build the XML
     root = etree.Element("shadow")
+    root.set("preload", "~/.shadow/lib/libshadow-interpose.so")
+    root.set("environment", "OPENSSL_ia32cap=~0x200000200000000;EVENT_NOSELECT=1;EVENT_NOPOLL=1;EVENT_NOKQUEUE=1;EVENT_NODEVPOLL=1;EVENT_NOEVPORT=1;EVENT_NOWIN32=1")
 
     servernames = []
     i = 0
@@ -562,23 +564,28 @@ def generate(args):
 
         e = etree.Element("plugin")
         e.set("id", "tgen")
-        e.set("path", "{0}plugins/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
+        e.set("path", "{0}lib/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
         root.insert(0, e)
 
         # TODO enable when torflow works
         #e = etree.Element("plugin")
         #e.set("id", "torflow")
-        #e.set("path", "{0}plugins/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
+        #e.set("path", "{0}lib/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
         #root.insert(0, e)
 
         e = etree.Element("plugin")
         e.set("id", "torctl")
-        e.set("path", "{0}plugins/libshadow-plugin-torctl.so".format(INSTALLPREFIX))
+        e.set("path", "{0}lib/libshadow-plugin-torctl.so".format(INSTALLPREFIX))
+        root.insert(0, e)
+
+        e = etree.Element("plugin")
+        e.set("id", "tor-preload")
+        e.set("path", "{0}lib/libshadow-preload-tor.so".format(INSTALLPREFIX))
         root.insert(0, e)
 
         e = etree.Element("plugin")
         e.set("id", "tor")
-        e.set("path", "{0}plugins/libshadow-plugin-tor.so".format(INSTALLPREFIX))
+        e.set("path", "{0}lib/libshadow-plugin-tor.so".format(INSTALLPREFIX))
         root.insert(0, e)
 
         # internet topology map
@@ -640,6 +647,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
             a.set("arguments", "server {0} ~/.shadow/share/".format(serverport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "tor")
+            a.set("preload", "tor-preload")
             a.set("starttime", "{0}".format(int(starttime)))
             a.set("arguments", "{0} --ControlPort {1} --SocksPort {2} --SocksTimeout 5".format(torargs, controlport, socksport))
             a = etree.SubElement(e, "application")
@@ -653,6 +661,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
         else:
             a = etree.SubElement(e, "application")
             a.set("plugin", "tor")
+            a.set("preload", "tor-preload")
             a.set("starttime", "{0}".format(int(starttime)))
             a.set("arguments", torargs)
             a = etree.SubElement(e, "application")

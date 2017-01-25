@@ -196,20 +196,19 @@ add_definitions(-DED25519_CUSTOMRANDOM -DED25519_SUFFIX=_donna)
 remove_definitions(-DNDEBUG)
 
 ## disable warnings from tor code, add other options
-add_cflags("-w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
+add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE")
 
 ## create and install a shared library that can plug into shadow
 add_shadow_plugin(shadow-plugin-tor 
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
     ${tortrunnel_sources} ${torexttrunnel_sources} ${additional_sources})
-add_dependencies(shadow-plugin-tor shadow-preload-tor)
 
 if(TARGET torkeccak)
     add_dependencies(shadow-plugin-tor torkeccak)
 endif()
 
-target_link_libraries(shadow-plugin-tor shadow-preload-tor
+target_link_libraries(shadow-plugin-tor
     ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
     ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
 
@@ -222,16 +221,12 @@ foreach(lib ${CMAKE_TOR_LIBRARIES})
     message(STATUS "Linked " ${lib} " to shadow-plugin-tor")
 endforeach(lib ${CMAKE_TOR_LIBRARIES})
 
-install(TARGETS shadow-plugin-tor DESTINATION plugins)
+install(TARGETS shadow-plugin-tor DESTINATION lib)
 set_target_properties(shadow-plugin-tor PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 ## preload library for intercepting functions
 add_library(shadow-preload-tor SHARED shadowtor-preload.c)
-target_link_libraries(shadow-preload-tor ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} ${DL_LIBRARIES})
 install(TARGETS shadow-preload-tor DESTINATION lib)
-
-## install run script
-install(PROGRAMS shadow-tor DESTINATION bin)
 
 install(FILES ${TOR_ROOT_DIR}/src/config/geoip DESTINATION share/)
 #install(DIRECTORY resource/ DESTINATION share PATTERN "config/*")
