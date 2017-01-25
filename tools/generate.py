@@ -894,8 +894,8 @@ def sample_relays(relays, k):
     """
     n = len(relays)
     if k >= n:
+        print "warning: choosing only {0} of the requested {1} relays".format(n, k)
         k = n
-        print "warning: choosing only {0} of {1} relays".format(k, n)
     assert k <= n
 
     t = 0
