@@ -176,6 +176,7 @@ def main():
     r = args.func(args)
 
     logging.info("returning code '{0}'".format(r))
+    sys.exit(r)
 
 def dependencies(args):
     if args.prefix is not None: args.prefix = getfullpath(args.prefix)
