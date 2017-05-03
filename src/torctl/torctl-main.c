@@ -54,7 +54,9 @@ static void _torctlmain_log(GLogLevelFlags level, const gchar* functionName, con
     va_end(vargs);
 }
 
-#define mylog(...) _torctlmain_log(G_LOG_LEVEL_INFO, __FUNCTION__, __VA_ARGS__)
+#define mylogm(...) _torctlmain_log(G_LOG_LEVEL_MESSAGE, __FUNCTION__, __VA_ARGS__)
+#define mylogd(...) _torctlmain_log(G_LOG_LEVEL_DEBUG, __FUNCTION__, __VA_ARGS__)
+#define myloge(...) _torctlmain_log(G_LOG_LEVEL_CRITICAL, __FUNCTION__, __VA_ARGS__)
 
 /* this main replaces the shd-torctl-plugin.c file to run outside of shadow */
 int main(int argc, char *argv[]) {
@@ -64,12 +66,12 @@ int main(int argc, char *argv[]) {
     gchar hostname[128];
     memset(hostname, 0, 128);
     gethostname(hostname, 128);
-	mylog("Starting torctl program on host %s process id %i", hostname, (gint)getpid());
+	mylogm("Starting torctl program on host %s process id %i", hostname, (gint)getpid());
 
 	/* create the new state according to user inputs */
 	TorCTL* torctlState = torctl_new(argc, argv, &_torctlmain_log);
 	if(!torctlState) {
-		mylog("Error initializing new TorCTL instance");
+		myloge("Error initializing new TorCTL instance");
 		return -1;
 	}
 
@@ -77,7 +79,7 @@ int main(int argc, char *argv[]) {
 	 * so we know when we can wait on any of them without blocking. */
 	int mainepolld = epoll_create(1);
 	if(mainepolld == -1) {
-		mylog("Error in main epoll_create");
+		myloge("Error in main epoll_create");
 		close(mainepolld);
 		return -1;
 	}
@@ -88,7 +90,7 @@ int main(int argc, char *argv[]) {
 	mainevent.events = EPOLLIN|EPOLLOUT;
 	mainevent.data.fd = torctl_getEpollDescriptor(torctlState);
 	if(!mainevent.data.fd) {
-		mylog("Error retrieving torctl epoll descriptor");
+		myloge("Error retrieving torctl epoll descriptor");
 		close(mainepolld);
 		return -1;
 	}
@@ -97,19 +99,19 @@ int main(int argc, char *argv[]) {
 	/* main loop - wait for events from the descriptors */
 	struct epoll_event events[100];
 	int nReadyFDs;
-	mylog("entering main loop to watch descriptors");
+	mylogm("entering main loop to watch descriptors");
 
 	while(1) {
 		/* wait for some events */
-		mylog("waiting for events");
+		mylogd("waiting for events");
 		nReadyFDs = epoll_wait(mainepolld, events, 100, -1);
 		if(nReadyFDs == -1) {
-			mylog("Error in client epoll_wait");
+			myloge("Error in client epoll_wait");
 			return -1;
 		}
 
 		/* activate if something is ready */
-		mylog("processing event");
+		mylogd("processing event");
 		if(nReadyFDs > 0) {
 			torctl_ready(torctlState);
 		}
@@ -120,7 +122,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	mylog("finished main loop, cleaning up");
+	mylogm("finished main loop, cleaning up");
 
 	/* de-register the epoll descriptor */
 	mainevent.data.fd = torctl_getEpollDescriptor(torctlState);
@@ -132,7 +134,7 @@ int main(int argc, char *argv[]) {
 	close(mainepolld);
 	torctl_free(torctlState);
 
-	mylog("exiting cleanly");
+	mylogm("exiting cleanly");
 
 	return 0;
 }
