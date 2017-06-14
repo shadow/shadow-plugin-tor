@@ -993,6 +993,8 @@ EntryStatistics 1\n\
 ExitPortStatistics 1\n\
 ExtraInfoStatistics 1\n\
 CircuitPriorityHalflife 30\n\
+PathBiasUseThreshold 10000\n\
+PathBiasCircThreshold 10000\n\
 ControlPort 9051\n'.format(auths_lines, auth_name_csv)
     clients = \
 'ORPort 0\n\
@@ -1002,6 +1004,7 @@ SocksPort 9000\n\
 SocksListenAddress 127.0.0.1\n\
 BandwidthRate 5120000\n\
 BandwidthBurst 10240000\n'
+    torbrowser = '{}MaxCircuitDirtiness 30 seconds\n'.format(clients)
     bridgeclients = bridges_lines
     relays = \
 'ORPort 9111\n\
@@ -1045,6 +1048,7 @@ SocksPort 0\n' # note - also need exit policy
     if args.nbridges > 0:
         with open("conf/tor.bridge.torrc", 'wb') as f: print >>f, relays + epreject
     with open("conf/tor.client.torrc", 'wb') as f: print >>f, clients
+    with open("conf/tor.browser.torrc", 'wb') as f: print >>f, torbrowser
     if args.nbridgeclients > 0:
         with open("conf/tor.bridgeclient.torrc", 'wb') as f: print >>f, clients + bridgeclients
     with open("conf/tor.torperf.torrc", 'wb') as f: print >>f, clients + maxdirty + noguards
