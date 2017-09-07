@@ -9,6 +9,7 @@ find_package(M REQUIRED)
 find_package(OPENSSL REQUIRED)
 find_package(EVENT2 REQUIRED)
 find_package(GLIB REQUIRED)
+find_package(LibLZMA)
 
 #find_package(TOR REQUIRED)
 get_filename_component(TOR_ROOT_DIR "${CMAKE_BINARY_DIR}/../tor" ABSOLUTE)
@@ -22,7 +23,7 @@ include_directories(${TOR_ROOT_DIR}/src/ext)
 include_directories(${TOR_ROOT_DIR}/src/ext/trunnel)
 include_directories(${TOR_ROOT_DIR}/src/trunnel)
 
-include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INCLUDES} ${EVENT2_INCLUDES} ${OPENSSL_INCLUDES} ${TOR_INCLUDES})
+include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INCLUDES} ${EVENT2_INCLUDES} ${OPENSSL_INCLUDES} ${LIBLZMA_INCLUDE_DIRS} ${TOR_INCLUDES})
 
 ## import shadow libs
 #INCLUDE(${CMAKE_INSTALL_PREFIX}/share/shadow/shadow-externals.cmake)
@@ -210,7 +211,7 @@ endif()
 
 target_link_libraries(shadow-plugin-tor
     ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
-    ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
+    ${LIBLZMA_LIBRARIES} ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
 
 if(TARGET torkeccak)
     target_link_libraries(shadow-plugin-tor torkeccak)
