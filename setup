@@ -375,7 +375,7 @@ def install(args):
     logging.info("calling \'"+makeCommand+"\'")
     retcode = subprocess.call(makeCommand.strip().split())
     logging.info("make install returned " + str(retcode))
-    if retcode == 0: logging.info("now run \'shadow-tor\' from \'PREFIX/bin\' (check your PATH)")
+    if retcode == 0: logging.info("Successfully installed shadow-plugin-tor!")
 
     # go back to where we came from
     os.chdir(calledDirectory)
