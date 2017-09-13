@@ -171,6 +171,14 @@ list(REMOVE_ITEM toror_sources
 
 aux_source_directory(${TOR_ROOT_DIR}/src/trunnel tortrunnel_sources)
 
+# new trunnel code was added in a new hs directory
+check_tor_version(version_check_passed 0 3 0 1)
+if(version_check_passed AND (EXISTS ${TOR_ROOT_DIR}/src/trunnel/hs))
+    include_directories(${TOR_ROOT_DIR}/src/trunnel/hs)
+    aux_source_directory(${TOR_ROOT_DIR}/src/trunnel/hs tortrunnelhs_sources)
+    list(APPEND tortrunnel_sources ${tortrunnelhs_sources})
+endif()
+
 # store additional sources so files can be variably included
 set(additional_sources "")
 
