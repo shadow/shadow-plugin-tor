@@ -827,6 +827,8 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         rate, burst, observed = int(parts[1]), int(parts[2]), int(parts[3])
                     elif parts[0] == "opt" and parts[1] == "fingerprint":
                         fingerprint = "".join(parts[2:])
+                    elif parts[0] == "fingerprint":
+                        fingerprint = "".join(parts[1:])                        
 
                 if ip not in ipmap: continue
 
