@@ -65,6 +65,11 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # add building options
+    parser_build.add_argument('-y', '--assume-yes',
+        help="don't ask for confirmation while downloading dependencies",
+        action="store_true", dest="preapproved",
+        default=False)
+
     parser_build.add_argument('-p', '--prefix',
         help="configure PATH as Shadow root installation directory",
         metavar="PATH",
@@ -407,7 +412,7 @@ def setup_tor(args):
 
         # only download if we dont have the requested URL
         if not os.path.exists(target_tor):
-            if get("./", args.tor_url, args.tor_sig_url, args.keyring) == None:
+            if get("./", args.tor_url, args.tor_sig_url, args.keyring, args.preapproved) == None:
 #            if download(args.tor_url, target_tor) != 0:
                 logging.error("problem getting \'{0}\'".format(args.tor_url))
                 return -1
