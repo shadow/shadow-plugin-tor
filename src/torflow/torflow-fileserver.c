@@ -15,7 +15,7 @@ struct _TorFlowFileServer {
 };
 
 TorFlowFileServer* torflowfileserver_new(const gchar* name, in_port_t networkPort) {
-    in_addr_t networkIP = torflowutil_lookupAddress(name, NULL);
+    in_addr_t networkIP = torflowutil_lookupAddress(name);
     if(networkIP == 0 || networkPort == 0) {
         return NULL;
     }

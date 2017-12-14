@@ -72,11 +72,9 @@ static void _torflowbase_processLineSync(TorFlowBase* tfb, GString* linebuf) {
 			g_strfreev(parts);
 
 			if(tfb->internal->cachedCircId <= 0) {
-				tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id,
-						"measurement circuit build failure '%s'", tfb->internal->cachedCircPath);
+				warning("%s: measurement circuit build failure '%s'", tfb->id, tfb->internal->cachedCircPath);
 			} else {
-				tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-						"started building measurement circuit '%i'", tfb->internal->cachedCircId);
+				info("%s: started building measurement circuit '%i'", tfb->id, tfb->internal->cachedCircId);
 			}
 		}
 	} else if (tfb->internal->readyForDescriptors && g_strstr_len(linebuf->str, linebuf->len, "ns/all")) {
@@ -99,8 +97,7 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 	gboolean isConsumed = FALSE;
 
 	if(g_strstr_len(linebuf->str, linebuf->len, ".exit")) {
-		tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-				"ignoring tor-internal response '%s'", linebuf->str);
+		info("%s: ignoring tor-internal response '%s'", linebuf->str);
 		return;
 	}
 
@@ -114,8 +111,7 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 
 		if(g_strstr_len(parts[3], 5, "BUILT")) {
 			if(tfb->internal->waitingMeasurementCircuit && circid == tfb->internal->cachedCircId) {
-				tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-						"finished building new measurement circuit '%i'", circid);
+				info("%s: finished building new measurement circuit '%i'", tfb->id, circid);
 
 				tfb->internal->waitingMeasurementCircuit = FALSE;
 
@@ -128,11 +124,9 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 		} else if(g_strstr_len(parts[3], 6, "FAILED")) {
 			if(circid == tfb->internal->cachedCircId) {
 				if(g_strstr_len(parts[7], 14, "REASON=TIMEOUT")) {
-					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-							"measurement circuit '%i' has timed out", circid);
+					message("%s: measurement circuit '%i' has timed out", tfb->id, circid);
 				} else {
-					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-							"measurement circuit '%i' has failed for some reason", circid);
+					message("%s: measurement circuit '%i' has failed for some reason", tfb->id, circid);
 				}
 
 				tfb->internal->waitingMeasurementCircuit = FALSE;
@@ -190,8 +184,7 @@ static void _torflowbase_processLineASync(TorFlowBase* tfb, GString* linebuf) {
 	}
 
 	if(!isConsumed) {
-		tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-				"ignoring asynch response '%s'", linebuf->str);
+		info("%s: ignoring asynch response '%s'", tfb->id, linebuf->str);
 	}
 }
 
@@ -200,13 +193,11 @@ static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
 		case C_AUTH: {
 			gint code = _torflowbase_parseCode(linebuf->str);
 			if(code == 250) {
-				tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id,
-							"successfully received auth response '%s'", linebuf->str);
+				info("%s: successfully received auth response '%s'", tfb->id, linebuf->str);
 				g_queue_push_tail(tfb->internal->commands, g_string_new("GETINFO status/bootstrap-phase\r\n"));
 				tfb->internal->controlState = C_BOOTSTRAP;
 			} else {
-				tfb->slogf(SHADOW_LOG_LEVEL_CRITICAL, tfb->id,
-							"received failed auth response '%s'", linebuf->str);
+				critical("%s: received failed auth response '%s'", tfb->id, linebuf->str);
 			}
 			break;
 		}
@@ -215,11 +206,10 @@ static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
 			/* we will be getting all client status events, not all of them have bootstrap status */
 			gint progress = _torflowbase_parseBootstrapProgress(linebuf->str);
 			if(progress >= 0) {
-				tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id,
-							"successfully received bootstrap phase response '%s'", linebuf->str);
+				debug(tfb->id,
+							"%s: successfully received bootstrap phase response '%s'", tfb->id, linebuf->str);
 				if(progress >= 100) {
-					tfb->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfb->id,
-							"torflow client is now ready (Bootstrapped 100)");
+					message("%s: torflow client is now ready (Bootstrapped 100)", tfb->id);
 
 					g_queue_push_tail(tfb->internal->commands, g_string_new("SETCONF __LeaveStreamsUnattached=1 __DisablePredictedCircuits=1 MaxCircuitDirtiness=36000 CircuitStreamTimeout=3600\r\n"));
 					g_queue_push_tail(tfb->internal->commands, g_string_new("SETEVENTS CIRC STREAM\r\n"));
@@ -249,8 +239,7 @@ static void _torflowbase_processLine(TorFlowBase* tfb, GString* linebuf) {
 			} else if(tfb->internal->gettingDescriptors) {/* descriptor info */
 			    g_queue_push_tail(tfb->internal->descriptorLines, g_strdup(linebuf->str));
 			} else {
-				tfb->slogf(SHADOW_LOG_LEVEL_WARNING, tfb->id,
-					"received unhandled response '%s'", linebuf->str);
+				warning("%s: received unhandled response '%s'", tfb->id, linebuf->str);
 			}
 			break;
 		}
@@ -275,7 +264,7 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 
 	/* send all queued commands */
 	if(events & EPOLLOUT) {
-		tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "EPOLLOUT is set");
+		debug(tfb->id, "%s: EPOLLOUT is set", tfb->id);
 
 		while(!g_queue_is_empty(tfb->internal->commands)) {
 			GString* command = g_queue_pop_head(tfb->internal->commands);
@@ -286,7 +275,7 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 				/* at least some parts of the command were sent successfully */
 				GString* sent = g_string_new(command->str);
 				sent = g_string_truncate(sent, bytes);
-				tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id, "torflow-sent '%s'", g_strchomp(sent->str));
+				info(tfb->id, "%s: torflow-sent '%s'", tfb->id, g_strchomp(sent->str));
 				g_string_free(sent, TRUE);
 			}
 
@@ -300,12 +289,12 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 			}
 		}
 		guint32 event = g_queue_is_empty(tfb->internal->commands) ? EPOLLIN : EPOLLOUT;
-		torflowutil_epoll(tfb->internal->epolld, sd, EPOLL_CTL_MOD, event, tfb->slogf);
+		torflowutil_epoll(tfb->internal->epolld, sd, EPOLL_CTL_MOD, event);
 	}
 
 	/* recv and process all incoming lines */
 	if(events & EPOLLIN) {
-		tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "EPOLLIN is set");
+		debug(tfb->id, "%s: EPOLLIN is set", tfb->id);
 
 		gchar recvbuf[10240];
 		memset(recvbuf, 0, 10240);
@@ -313,8 +302,8 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 
 		while((bytes = recv(tfb->internal->controld, recvbuf, 10000, 0)) > 0) {
 			recvbuf[bytes] = '\0';
-			tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id,
-					"recvbuf:%s",
+			debug(tfb->id,
+					"%s: recvbuf:%s", tfb->id,
 					recvbuf);
 
 			gboolean isLastLineIncomplete = FALSE;
@@ -346,7 +335,7 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 					continue;
 				} else {
 					/* we have a full line in our buffer */
-					tfb->slogf(SHADOW_LOG_LEVEL_INFO, tfb->id, "torflow-recv '%s'", tfb->internal->receiveLineBuffer->str);
+					info(tfb->id, "%s: torflow-recv '%s'", tfb->id, tfb->internal->receiveLineBuffer->str);
 					_torflowbase_processLine(tfb, tfb->internal->receiveLineBuffer);
 					g_string_free(tfb->internal->receiveLineBuffer, TRUE);
 					tfb->internal->receiveLineBuffer = NULL;
@@ -358,7 +347,7 @@ void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events) {
 
 	/* if we have commands to send, lets register for output event */
 	if(!g_queue_is_empty(tfb->internal->commands)) {
-		torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+		torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 	}
 }
 
@@ -368,8 +357,7 @@ void torflowbase_start(TorFlowBase* tfb) {
 	/* create the client socket and get a socket descriptor */
 	tfb->internal->controld = socket(AF_INET, (SOCK_STREAM | SOCK_NONBLOCK), 0);
 	if(tfb->internal->controld == -1) {
-		tfb->slogf(SHADOW_LOG_LEVEL_ERROR, tfb->id,
-				"unable to start client controld: error in socket");
+		error("%s: unable to start client controld: error in socket", tfb->id);
 		return;
 	}
 
@@ -383,28 +371,23 @@ void torflowbase_start(TorFlowBase* tfb) {
 	/* connect to server. since we are non-blocking, we expect this to return EINPROGRESS */
 	gint res = connect(tfb->internal->controld, (struct sockaddr *) &serverAddress, sizeof(serverAddress));
 	if (res == -1 && errno != EINPROGRESS) {
-		tfb->slogf(SHADOW_LOG_LEVEL_ERROR, tfb->id,
-				"unable to start client controld: error in connect");
+		error("%s: unable to start client controld: error in connect", tfb->id);
 		return;
 	}
 
 	/* specify the events to watch for on this socket.
 	 * to start out, the client wants to know when it can send a message. */
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_ADD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_ADD, EPOLLOUT);
 	tfb->internal->controlState = C_NONE;
 }
 
-void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld, gint workerID) {
+void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers, in_port_t controlPort, gint epolld, gint workerID) {
 	g_assert(tfb);
 	g_assert(eventHandlers);
-	g_assert(slogf && scbf);
 
 	GString* idbuf = g_string_new(NULL);
 	g_string_printf(idbuf, "TORFLOW-%u-%i", ntohs(controlPort), workerID);
 	tfb->id = g_string_free(idbuf, FALSE);
-	tfb->slogf = slogf;
-	tfb->scbf = scbf;
 
 	tfb->internal = g_new0(TorFlowBaseInternal, 1);
 	tfb->internal->netControlPort = controlPort;
@@ -463,10 +446,10 @@ void torflowbase_requestInfo(TorFlowBase* tfb) {
 	//g_string_printf(command, "GETINFO dir/status-vote/current/consensus\r\n");
 	g_string_printf(command, "GETINFO ns/all\r\n");
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 	tfb->internal->readyForDescriptors = TRUE;
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a GETINFO command");
+	debug(tfb->id, "%s: queued a GETINFO command", tfb->id);
 }
 
 gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gchar* path) {
@@ -478,7 +461,7 @@ gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gchar* path) {
 	GString* command = g_string_new(NULL);
 	g_string_printf(command, "EXTENDCIRCUIT 0 %s\r\n", path);
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 
 	tfb->internal->waitingMeasurementCircuit = TRUE;
 
@@ -488,7 +471,7 @@ gboolean torflowbase_buildNewMeasurementCircuit(TorFlowBase* tfb, gchar* path) {
     }
 	tfb->internal->cachedCircPath = path;
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a EXTENDCIRCUIT command for %s", path);
+	debug(tfb->id, "%s: queued a EXTENDCIRCUIT command for %s", tfb->id, path);
 	return TRUE;
 }
 
@@ -498,9 +481,9 @@ void torflowbase_closeCircuit(TorFlowBase* tfb, gint circid) {
 	GString* command = g_string_new(NULL);
 	g_string_printf(command, "CLOSECIRCUIT %i\r\n", circid);
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a CLOSECIRCUIT command for %i", circid);
+	debug(tfb->id, "%s: queued a CLOSECIRCUIT command for %i", tfb->id, circid);
 }
 
 void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint circid) {
@@ -509,9 +492,9 @@ void torflowbase_attachStreamToCircuit(TorFlowBase* tfb, gint streamid, gint cir
 	GString* command = g_string_new(NULL);
 	g_string_printf(command, "ATTACHSTREAM %i %i\r\n", streamid, circid);
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "queued a ATTACHSTREAM command for stream %i to circuit %i", streamid, circid);
+	debug(tfb->id, "%s: queued a ATTACHSTREAM command for stream %i to circuit %i", tfb->id, streamid, circid);
 }
 
 void torflowbase_enableCircuits(TorFlowBase* tfb) {
@@ -519,9 +502,9 @@ void torflowbase_enableCircuits(TorFlowBase* tfb) {
 
 	GString* command = g_string_new("SETCONF __DisablePredictedCircuits=0\r\n");
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "now allowing predicted circuits");
+	debug(tfb->id, "%s: now allowing predicted circuits", tfb->id);
 }
 
 void torflowbase_closeStreams(TorFlowBase* tfb, gchar* addressString) {
@@ -530,9 +513,9 @@ void torflowbase_closeStreams(TorFlowBase* tfb, gchar* addressString) {
 	GString* command = g_string_new(NULL);
 	g_string_printf(command, "CLOSEALLSTREAMS %s\r\n", addressString);
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "closing streams to %s", addressString);
+	debug(tfb->id, "%s: closing streams to %s", tfb->id, addressString);
 }
 
 void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid) {
@@ -541,7 +524,7 @@ void torflowbase_ignorePackageWindows(TorFlowBase* tfb, gint circid) {
 	GString* command = g_string_new(NULL);
 	g_string_printf(command, "IGNOREPACKAGEWINDOW %i\r\n", circid);
 	g_queue_push_tail(tfb->internal->commands, command);
-	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT, tfb->slogf);
+	torflowutil_epoll(tfb->internal->epolld, tfb->internal->controld, EPOLL_CTL_MOD, EPOLLOUT);
 
-	tfb->slogf(SHADOW_LOG_LEVEL_DEBUG, tfb->id, "ignoring package windows for circ %i and its streams", circid);
+	debug("%s: ignoring package windows for circ %i and its streams", tfb->id, circid);
 }

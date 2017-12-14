@@ -27,7 +27,16 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
-#include <shd-library.h>
+
+/* logging facility */
+void torflowmain_log(GLogLevelFlags level, const gchar* functionName, const gchar* format, ...);
+
+#define debug(...) torflowmain_log(G_LOG_LEVEL_DEBUG, __FUNCTION__, __VA_ARGS__)
+#define info(...) torflowmain_log(G_LOG_LEVEL_INFO, __FUNCTION__, __VA_ARGS__)
+#define message(...) torflowmain_log(G_LOG_LEVEL_MESSAGE, __FUNCTION__, __VA_ARGS__)
+#define warning(...) torflowmain_log(G_LOG_LEVEL_WARNING, __FUNCTION__, __VA_ARGS__)
+#define critical(...) torflowmain_log(G_LOG_LEVEL_CRITICAL, __FUNCTION__, __VA_ARGS__)
+#define error(...) torflowmain_log(G_LOG_LEVEL_ERROR, __FUNCTION__, __VA_ARGS__)
 
 typedef struct _TorFlowFileServer TorFlowFileServer;
 
@@ -85,17 +94,26 @@ typedef struct _TorFlowEventCallbacks {
 	FreeFunc onFree;
 } TorFlowEventCallbacks;
 
+
+/* timers */
+typedef struct _TorFlowTimer TorFlowTimer;
+TorFlowTimer* torflowtimer_new(GFunc func, gpointer arg1, gpointer arg2);
+void torflowtimer_arm(TorFlowTimer* timer, guint timeoutSeconds);
+gboolean torflowtimer_check(TorFlowTimer* timer);
+gint torflowtimer_getFD(TorFlowTimer* timer);
+void torflowtimer_free(TorFlowTimer* timer);
+
+
+typedef struct _TorFlowManager TorFlowManager;
+
 typedef struct _TorFlowBase TorFlowBase;
 typedef struct _TorFlowBaseInternal TorFlowBaseInternal;
 struct _TorFlowBase {
 	TorFlowBaseInternal* internal;
-	ShadowLogFunc slogf;
-	ShadowCreateCallbackFunc scbf;
 	gchar* id;
 };
 
-void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf, in_port_t controlPort, gint epolld, gint workerID);
+void torflowbase_init(TorFlowBase* tfb, TorFlowEventCallbacks* eventHandlers, in_port_t controlPort, gint epolld, gint workerID);
 void torflowbase_free(TorFlowBase* tfb);
 void torflowbase_start(TorFlowBase* tfb);
 void torflowbase_activate(TorFlowBase* tfb, gint sd, uint32_t events);
@@ -115,7 +133,7 @@ typedef struct _TorFlowAggregator TorFlowAggregator;
 gint torflowaggregator_loadFromPresets(TorFlowAggregator* tfa, GSList* relays);
 void torflowaggregator_reportMeasurements(TorFlowAggregator* tfa, TorFlowSlice* slice, gboolean printFile);
 void torflowaggregator_free(TorFlowAggregator* tfa);
-TorFlowAggregator* torflowaggregator_new(ShadowLogFunc slogf, gchar* filename, gdouble nodeCap);
+TorFlowAggregator* torflowaggregator_new(gchar* filename, gdouble nodeCap);
 
 typedef struct _TorFlow TorFlow;
 typedef struct _TorFlowInternal TorFlowInternal;
@@ -125,7 +143,6 @@ struct _TorFlow {
 };
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
 		in_port_t controlPort, in_port_t socksPort, gint workerID);
 void torflow_start(TorFlow* tf);
 gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver);
@@ -133,7 +150,7 @@ void torflow_freeDownload(TorFlow* tf, gint socksd);
 void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath);
 gint torflow_getEpollDescriptor(TorFlow* tf);
 in_port_t torflow_getHostBoundSocksPort(TorFlow* tf);
-void torflow_ready(TorFlow* tf);
+void torflow_ready(TorFlow* tf, TorFlowManager* tfm);
 
 typedef struct _TorFlowProber TorFlowProber;
 typedef struct _TorFlowProberInternal TorFlowProberInternal;
@@ -142,23 +159,23 @@ struct _TorFlowProber {
 	TorFlowProberInternal* internal;
 };
 
-typedef struct _TorFlowManager TorFlowManager;
-TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf);
+TorFlowManager* torflowmanager_new(gint argc, gchar* argv[]);
 void torflowmanager_ready(TorFlowManager* tfm);
+gint torflowmanager_getEpollDescriptor(TorFlowManager* tfm);
 void torflowmanager_free(TorFlowManager* tfm);
 TorFlowSlice* torflowmanager_getNextSlice(TorFlowManager* tfm);
 void torflowmanager_notifySliceMeasured(TorFlowManager* tfm, TorFlowSlice* slice);
+void torflowmanager_registerTimer(TorFlowManager* tfm, TorFlowTimer* timer);
 
-TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-        TorFlowManager* tfm, gint workerID, gint numWorkers,
+TorFlowProber* torflowprober_new(TorFlowManager* tfm, gint workerID, gint numWorkers,
 		gint pausetime, in_port_t controlPort, in_port_t socksPort, TorFlowFileServer* fileserver);
 void torflowprober_start(TorFlowProber* tfp);
 void torflowprober_continue(TorFlowProber* tfp);
 
 
-void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events, ShadowLogFunc slogf);
+void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events);
 gsize torflowutil_computeTime(struct timespec* start, struct timespec* end);
-in_addr_t torflowutil_lookupAddress(const gchar* name, ShadowLogFunc slogf);
+in_addr_t torflowutil_lookupAddress(const gchar* name);
 gchar* torflowutil_ipToNewString(in_addr_t netIP);
 void torflowutil_resetRelay(TorFlowRelay* relay, gpointer nothing);
 gint torflowutil_meanBandwidth(TorFlowRelay* relay);
@@ -175,5 +192,6 @@ in_addr_t torflowfileserver_getNetIP(TorFlowFileServer* tffs);
 in_port_t torflowfileserver_getNetPort(TorFlowFileServer* tffs);
 const gchar* torflowfileserver_getName(TorFlowFileServer* tffs);
 const gchar*  torflowfileserver_getHostIPStr(TorFlowFileServer* tffs);
+
 
 #endif /* TORFLOW_H_ */

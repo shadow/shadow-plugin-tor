@@ -105,8 +105,8 @@ static void _torplowprober_logProgress(TorFlowProber* tfp) {
         currentItem = g_slist_next(currentItem);
     }
 
-    tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-            "Slice %i progress: completed %i/%i probes; completed %i/%i relays; started %i/%i remaining relays",
+    message("%s: Slice %i progress: completed %i/%i probes; completed %i/%i relays; started %i/%i remaining relays",
+            tfp->_tf._base.id,
             tfp->internal->currentSlice->sliceNumber,
             finishedRequiredProbes, totalRequiredProbes, finishedRelays, totalRelays,
             partialRelays, totalRelays-finishedRelays);
@@ -122,8 +122,7 @@ static gchar* _torflowprober_selectNewPath(TorFlowProber* tfp) {
     // exit side
     GSList* candidateExits = _torflowprober_getCandidateExits(tfp);
     if(!candidateExits) {
-        tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_WARNING, tfp->_tf._base.id,
-                "No exits in slice %u - skipping slice", tfp->internal->currentSlice->sliceNumber);
+        warning("%s: No exits in slice %u - skipping slice", tfp->_tf._base.id, tfp->internal->currentSlice->sliceNumber);
         return NULL;
     }
     guint candidateExitsLength = g_slist_length(candidateExits);
@@ -132,8 +131,7 @@ static gchar* _torflowprober_selectNewPath(TorFlowProber* tfp) {
     // entry side
     GSList* candidateEntries = _torflowprober_getCandidateEntries(tfp);
     if(!candidateEntries) {
-        tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_WARNING, tfp->_tf._base.id,
-                "No entries in slice %u - skipping slice", tfp->internal->currentSlice->sliceNumber);
+        warning("%s: No entries in slice %u - skipping slice", tfp->_tf._base.id, tfp->internal->currentSlice->sliceNumber);
         if(candidateExits) {
             g_slist_free(candidateExits);
         }
@@ -171,31 +169,30 @@ static gchar* _torflowprober_selectNewPath(TorFlowProber* tfp) {
     return g_strconcat(tfp->internal->currentSlice->currentEntryRelay->nickname->str, ",", tfp->internal->currentSlice->currentExitRelay->nickname->str, NULL);
 }
 
-static void _torflowprober_startNextProbe(TorFlowProber* tfp) {
+static void _torflowprober_startNextProbe(TorFlowProber* tfp, gpointer arg) {
     if(tfp->internal->currentSlice) {
         gchar* path = _torflowprober_selectNewPath(tfp);
         gboolean success = torflowbase_buildNewMeasurementCircuit(&tfp->_tf._base, path);
         if(!success) {
-            tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tfp->_tf._base.id,
-                            "Unable to build measurement circuit for slice %u with path %s. "
+            critical("%s: Unable to build measurement circuit for slice %u with path %s. "
                             "Pausing for %i seconds and trying again.",
+                            tfp->_tf._base.id,
                             tfp->internal->currentSlice->sliceNumber, path, tfp->internal->pausetime);
 
-            tfp->_tf._base.scbf((BootstrapCompleteFunc)_torflowprober_startNextProbe,
-                    tfp, tfp->internal->pausetime*1000);
+            TorFlowTimer* timer = torflowtimer_new((GFunc)_torflowprober_startNextProbe, tfp, NULL);
+            torflowtimer_arm(timer, tfp->internal->pausetime);
+            torflowmanager_registerTimer(tfp->internal->tfm, timer);
         }
     }
 }
 
 void torflowprober_continue(TorFlowProber* tfp) {
-    tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-            "Ready to start probing; getting next slice from manager");
+    debug("%s: Ready to start probing; getting next slice from manager", tfp->_tf._base.id);
 
     tfp->internal->currentSlice = torflowmanager_getNextSlice(tfp->internal->tfm);
     if(tfp->internal->currentSlice) {
-        tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-                "Starting new slice %u", tfp->internal->currentSlice->sliceNumber);
-        _torflowprober_startNextProbe(tfp);
+        message("%s: Starting new slice %u", tfp->_tf._base.id, tfp->internal->currentSlice->sliceNumber);
+        _torflowprober_startNextProbe(tfp, NULL);
     }
 }
 
@@ -219,8 +216,7 @@ static gboolean _torflowprober_isDoneWithCurrentSlice(TorFlowProber* tfp) {
 
 static void _torflowprober_transitionToNextProbe(TorFlowProber* tfp) {
 	g_assert(tfp);
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"Probe Complete, Building Next Circuit");
+	debug("%s: Probe Complete, Building Next Circuit", tfp->_tf._base.id);
 
 	/* clear out last circuit */
 	if (tfp->internal->measurementCircID) {
@@ -233,8 +229,7 @@ static void _torflowprober_transitionToNextProbe(TorFlowProber* tfp) {
         _torplowprober_logProgress(tfp);
 
         if(_torflowprober_isDoneWithCurrentSlice(tfp)) {
-            tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-                    "Completed slice %u", tfp->internal->currentSlice->sliceNumber);
+            message("%s: Completed slice %u", tfp->_tf._base.id, tfp->internal->currentSlice->sliceNumber);
 
             // report results back to manager and let him handle it
             TorFlowSlice* slice = tfp->internal->currentSlice;
@@ -243,7 +238,7 @@ static void _torflowprober_transitionToNextProbe(TorFlowProber* tfp) {
             torflowprober_continue(tfp);
         } else {
             // If not done, build new circuit and stop worrying
-            _torflowprober_startNextProbe(tfp);
+            _torflowprober_startNextProbe(tfp, NULL);
         }
 	}
 
@@ -265,8 +260,7 @@ static void _torflowprober_recordTimeout(TorFlowProber* tfp) {
 static void _torflowprober_onFileServerTimeout(TorFlowProber* tfp) {
 	g_assert(tfp);
 
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"Connection Failed");
+	debug("%s: Connection Failed", tfp->_tf._base.id);
 
 	_torflowprober_recordTimeout(tfp);
 
@@ -274,12 +268,11 @@ static void _torflowprober_onFileServerTimeout(TorFlowProber* tfp) {
 	_torflowprober_transitionToNextProbe(tfp);
 }
 
-static void _torflowprober_onDownloadTimeout(TimeoutData* td) {
+static void _torflowprober_onDownloadTimeout(TorFlowProber* tfp, TimeoutData* td) {
 	g_assert(td && td->tfp);
 
 	if(td->measurementCircID == td->tfp->internal->measurementCircID) {
-		td->tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, td->tfp->_tf._base.id,
-				"Downloading over circ %i timed out", td->measurementCircID);
+		message("%s: Downloading over circ %i timed out", td->tfp->_tf._base.id, td->measurementCircID);
 		_torflowprober_recordTimeout(td->tfp);
 
 		/* do another probe now */
@@ -290,8 +283,7 @@ static void _torflowprober_onDownloadTimeout(TimeoutData* td) {
 
 static void _torflowprober_onMeasurementCircuitBuilt(TorFlowProber* tfp, gint circid) {
 	g_assert(tfp);
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"Circuit Built, Starting Download");
+	debug("Circuit Built, Starting Download", tfp->_tf._base.id);
 	tfp->internal->measurementCircID = circid;
 	tfp->internal->downloadSD = torflow_newDownload((TorFlow*)tfp, tfp->internal->fileserver);
 }
@@ -302,14 +294,13 @@ static void _torflowprober_onStreamNew(TorFlowProber* tfp, gint streamid, gint c
 
 	/* if this stream is not from our socks port, dont mess with it */
 	if(sourcePort != (gint)torflow_getHostBoundSocksPort((TorFlow*) tfp)) {
-	    tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_INFO, tfp->_tf._base.id,
-	                "New stream %i on circ %i from %s:%i to %s:%i is not ours, ignoring it",
+	    info("%s: New stream %i on circ %i from %s:%i to %s:%i is not ours, ignoring it",
+	                tfp->_tf._base.id,
 	                streamid, circid, sourceAddress, sourcePort, targetAddress, targetPort);
 	    return;
 	}
 
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"New Stream, Attaching to Circuit");
+	debug("%s: New Stream, Attaching to Circuit", tfp->_tf._base.id);
 	if(tfp->internal->measurementCircID) {
 		/* attach to our measurement circuit */
 		tfp->internal->measurementStreamID = streamid;
@@ -322,8 +313,7 @@ static void _torflowprober_onStreamNew(TorFlowProber* tfp, gint streamid, gint c
 
 static void _torflowprober_onStreamSucceeded(TorFlowProber* tfp, gint streamid, gint circid, gchar* targetAddress, gint targetPort) {
 	g_assert(tfp);
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"Stream Attach Succeeded");
+	debug("%s: Stream Attach Succeeded", tfp->_tf._base.id);
 
 	if(circid == tfp->internal->measurementCircID &&
 			streamid == tfp->internal->measurementStreamID) {
@@ -333,8 +323,7 @@ static void _torflowprober_onStreamSucceeded(TorFlowProber* tfp, gint streamid, 
 
 static void _torflowprober_onFileServerConnected(TorFlowProber* tfp, gint socksd) {
 	g_assert(tfp);
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_DEBUG, tfp->_tf._base.id,
-			"FileServer Connected");
+	debug("%s: FileServer Connected", tfp->_tf._base.id);
 
 	g_assert(tfp->internal->measurementStreamSucceeded);
 	if(socksd == tfp->internal->downloadSD) {
@@ -342,8 +331,11 @@ static void _torflowprober_onFileServerConnected(TorFlowProber* tfp, gint socksd
 		TimeoutData* td = g_new0(TimeoutData, 1);
 		td->tfp = tfp;
 		td->measurementCircID = tfp->internal->measurementCircID;
-		tfp->_tf._base.scbf((ShadowPluginCallbackFunc)_torflowprober_onDownloadTimeout,
-			td, 1000*DOWNLOAD_TIMEOUT);
+
+		/* execute callback after 1 second */
+		TorFlowTimer* timer = torflowtimer_new((GFunc)_torflowprober_onDownloadTimeout, tfp, td);
+        torflowtimer_arm(timer, DOWNLOAD_TIMEOUT);
+        torflowmanager_registerTimer(tfp->internal->tfm, timer);
 	}
 }
 
@@ -368,8 +360,8 @@ void _torflowprober_recordMeasurement(TorFlowProber* tfb, gint contentLength, gs
 static void _torflowprober_onFileDownloadComplete(TorFlowProber* tfp, gint contentLength, gsize roundTripTime, gsize payloadTime, gsize totalTime) {
 	g_assert(tfp);
 
-	tfp->_tf._base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tfp->_tf._base.id,
-			"Probe complete. path=%s bytes=%i time-to: rtt=%zu payload=%zu total=%zu",
+	message("%s: Probe complete. path=%s bytes=%i time-to: rtt=%zu payload=%zu total=%zu",
+			tfp->_tf._base.id,
 			torflowbase_getCurrentPath((TorFlowBase*) tfp),
 			contentLength, roundTripTime, payloadTime, totalTime);
 
@@ -391,8 +383,7 @@ static void _torflowprober_onFree(TorFlowProber* tfp) {
 	g_free(tfp->internal);
 }
 
-TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
-        TorFlowManager* tfm, gint workerID, gint numWorkers,
+TorFlowProber* torflowprober_new(TorFlowManager* tfm, gint workerID, gint numWorkers,
 		gint pausetime, in_port_t controlPort, in_port_t socksPort, TorFlowFileServer* fileserver) {
 
 	TorFlowEventCallbacks events;
@@ -421,7 +412,7 @@ TorFlowProber* torflowprober_new(ShadowLogFunc slogf, ShadowCreateCallbackFunc s
         tfp->internal->fileserver = fileserver;
 	}
 
-	torflow_init((TorFlow*)tfp, &events, slogf, scbf, controlPort, socksPort, workerID);
+	torflow_init((TorFlow*)tfp, &events, controlPort, socksPort, workerID);
 
 	return tfp;
 }

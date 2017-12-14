@@ -4,14 +4,15 @@
 
 #include "torflow.h"
 
+#include <sys/timerfd.h>
+
 struct _TorFlowManager {
     TorFlowBase _base;
     gint baseED;
 	gint ed;
-	ShadowLogFunc slogf;
-	ShadowCreateCallbackFunc scbf;
 	TorFlowAggregator* tfa;
 	GHashTable* probers;
+	GHashTable* timers;
 	gboolean probersStarted;
 	gint workers;
 
@@ -117,16 +118,16 @@ void torflowmanager_notifySliceMeasured(TorFlowManager* tfm, TorFlowSlice* slice
     g_assert(tfm->numRemainingSlicesThisRound != 0); // cant complete a slice if they have already all been done!
     tfm->numRemainingSlicesThisRound--;
 
-    tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
-            "Slice %u measurements are complete! We have %u/%u slices remaining to measure in this round.",
+    message("%s: Slice %u measurements are complete! We have %u/%u slices remaining to measure in this round.",
+            tfm->_base.id,
             slice->sliceNumber, tfm->numRemainingSlicesThisRound, tfm->numMeasurableSlicesThisRound);
 
     // see if we're done with all slices
     gboolean thisRoundIsDone = (tfm->numRemainingSlicesThisRound == 0) ? TRUE : FALSE;
     if(thisRoundIsDone) {
         g_assert(g_queue_get_length(tfm->currentSlices) == 0);
-        tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
-                "We have completed %s round of measurements of %u relays in %u slices.",
+        message("%s: We have completed %s round of measurements of %u relays in %u slices.",
+                tfm->_base.id,
                 tfm->round1Done ? "another" : "the first",
                 tfm->numMeasurableRelaysThisRound, tfm->numMeasurableSlicesThisRound);
         tfm->round1Done = TRUE;
@@ -140,16 +141,14 @@ void torflowmanager_notifySliceMeasured(TorFlowManager* tfm, TorFlowSlice* slice
 
     /* after every round, we should fetch updated descriptors and start the next round */
     if(thisRoundIsDone) {
-        tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
-                    "Reloading descriptors for next round");
+        message("%s: Reloading descriptors for next round", tfm->_base.id);
         torflowbase_requestInfo(&tfm->_base);
     }
 }
 
 static void _torflowmanager_onBootstrapComplete(TorFlowManager* tfm) {
     g_assert(tfm);
-    tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, tfm->_base.id,
-            "Ready to Measure, Getting Descriptors");
+    debug("%s: Ready to Measure, Getting Descriptors", tfm->_base.id);
     torflowbase_requestInfo(&tfm->_base);
 }
 
@@ -178,8 +177,7 @@ static guint _torflowmanager_parseAndStoreRelays(TorFlowManager* tfm, GQueue* de
                 g_string_free(id64, TRUE);
                 g_strfreev(parts);
 
-                tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, tfm->_base.id,
-                        "now getting descriptor for relay %s", currentRelay->nickname->str);
+                debug("%s: now getting descriptor for relay %s", tfm->_base.id, currentRelay->nickname->str);
                 break;
             }
             case 's': {
@@ -214,8 +212,7 @@ static guint _torflowmanager_parseAndStoreRelays(TorFlowManager* tfm, GQueue* de
             case '.': //meaningless; squelch
                 break;
             default:
-                tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
-                    "don't know what to do with response '%s'", line);
+                message("%s: don't know what to do with response '%s'", tfm->_base.id, line);
                 break;
         }
 
@@ -278,8 +275,7 @@ static guint _torflowmanager_updateSlices(TorFlowManager* tfm, GQueue* allMeasur
             if(newSlice->exitRelaysLength > 0 && newSlice->entryRelaysLength > 0) {
                 g_queue_push_tail(tfm->currentSlices, newSlice);
             } else {
-                tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
-                            "Slice %u is not measurable! Ignoring.", newSlice->sliceNumber);
+                message("%s: Slice %u is not measurable! Ignoring.", tfm->_base.id, newSlice->sliceNumber);
                 _torflowmanager_freeSlice(newSlice);
             }
             newSlice = NULL;
@@ -315,8 +311,8 @@ static void _torflowmanager_onDescriptorsReceived(TorFlowManager* tfm, GQueue* d
     /* now break these up into relay slices */
     guint numSlices = _torflowmanager_updateSlices(tfm, allMeasurableRelays);
 
-    tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, tfm->_base.id,
-            "New descriptors received. We have %u relays, %u measurable relays, and %u slices.",
+    message("%s: New descriptors received. We have %u relays, %u measurable relays, and %u slices.",
+            tfm->_base.id,
             numRelays, numMeasurableRelays, numSlices);
 
     tfm->numMeasurableRelaysThisRound = numMeasurableRelays;
@@ -343,12 +339,9 @@ static void _torflowmanager_onDescriptorsReceived(TorFlowManager* tfm, GQueue* d
 static const gchar* USAGE = "USAGE:\n"
 	"  torflow filename pausetime workers slicesize node_cap ctlport socksport fileserver:fileport \n";
 
-TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf) {
-	g_assert(slogf);
-	g_assert(scbf);
-
+TorFlowManager* torflowmanager_new(gint argc, gchar* argv[]) {
 	if(argc != 9) {
-		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
+		warning(USAGE);
 		return NULL;
 	}
 
@@ -358,8 +351,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
 	gint numWorkers = atoi(argv[3]);
 
 	if(numWorkers < 1) {
-		slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-            "Invalid number of torflow workers (%d). torflow will not operate.", numWorkers);
+		warning("Invalid number of torflow workers (%d). torflow will not operate.", numWorkers);
 		return NULL;
 	}
 
@@ -396,8 +388,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
         g_queue_push_tail(fileservers, fs);
         g_strfreev(parts);
 
-        slogf(SHADOW_LOG_LEVEL_INFO, __FUNCTION__,
-                "parsed file server %s at %s:%u",
+        info("parsed file server %s at %s:%u",
                 torflowfileserver_getName(fs),
                 torflowfileserver_getHostIPStr(fs),
                 ntohs(torflowfileserver_getNetPort(fs)));
@@ -411,11 +402,11 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
     g_assert(mainEpollDescriptor > 0); // TODO log error instead
 
 	TorFlowManager* tfm = g_new0(TorFlowManager, 1);
-	tfm->slogf = slogf;
-	tfm->scbf = scbf;
 	tfm->workers = numWorkers;
 	tfm->ed = mainEpollDescriptor;
 	tfm->slicesize = slicesize;
+
+	tfm->timers = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)torflowtimer_free);
 
 	tfm->AllRelaysByFingerprint = g_hash_table_new_full(g_str_hash,
 	        g_str_equal, NULL, (GDestroyNotify)_torflowmanager_freeRelay);
@@ -424,16 +415,16 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
     /* now start our controller to fetch descriptors */
 	tfm->baseED = epoll_create(1);
 	g_assert(tfm->baseED > 0); // TODO log error
-	torflowutil_epoll(tfm->ed, tfm->baseED, EPOLL_CTL_ADD, EPOLLIN, tfm->slogf);
+	torflowutil_epoll(tfm->ed, tfm->baseED, EPOLL_CTL_ADD, EPOLLIN);
     TorFlowEventCallbacks handlers;
     memset(&handlers, 0, sizeof(TorFlowEventCallbacks));
     handlers.onBootstrapComplete = (BootstrapCompleteFunc) _torflowmanager_onBootstrapComplete;
     handlers.onDescriptorsReceived = (DescriptorsReceivedFunc) _torflowmanager_onDescriptorsReceived;
-    torflowbase_init(&tfm->_base, &handlers, slogf, scbf, netControlPort, tfm->baseED, 0);
+    torflowbase_init(&tfm->_base, &handlers, netControlPort, tfm->baseED, 0);
     torflowbase_start(&tfm->_base);
 
     /* helper to manage stat reports and create v3bw files */
-    tfm->tfa = torflowaggregator_new(slogf, v3bwPath, nodeCap);
+    tfm->tfa = torflowaggregator_new(v3bwPath, nodeCap);
 
     /* workers that will probe the relays */
     tfm->probers = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify) torflowbase_free);
@@ -442,13 +433,13 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
         /* get the next fileserver */
         TorFlowFileServer* probeFileServer = g_queue_pop_head(fileservers);
 
-        TorFlowProber* prober = torflowprober_new(slogf, scbf, tfm, i, numWorkers, pausetime,
+        TorFlowProber* prober = torflowprober_new(tfm, i, numWorkers, pausetime,
                 netControlPort, netSocksPort, probeFileServer);
         g_assert(prober); // TODO log error instead
 
         /* make sure we watch the prober events on our main epoll */
         gint proberED = torflow_getEpollDescriptor((TorFlow*)prober);
-        torflowutil_epoll(tfm->ed, proberED, EPOLL_CTL_ADD, EPOLLIN, tfm->slogf);
+        torflowutil_epoll(tfm->ed, proberED, EPOLL_CTL_ADD, EPOLLIN);
 
         /* store the prober by its unique epoll descriptor */
         g_hash_table_replace(tfm->probers, GINT_TO_POINTER(proberED), prober);
@@ -461,8 +452,7 @@ TorFlowManager* torflowmanager_new(gint argc, gchar* argv[], ShadowLogFunc slogf
      * the rest will be safely freed */
     g_queue_free_full(fileservers, (GDestroyNotify)torflowfileserver_unref);
 
-    tfm->slogf(SHADOW_LOG_LEVEL_MESSAGE, __FUNCTION__,
-                    "started torflow with %i workers on control port %i and socks port %i",
+    message("started torflow with %i workers on control port %i and socks port %i",
                     numWorkers, hostControlPort, hostSocksPort);
 
     return tfm;
@@ -473,8 +463,7 @@ static void _torflowmanager_activateBase(TorFlowManager* tfm) {
     struct epoll_event epevs[100];
     gint nfds = epoll_wait(tfm->baseED, epevs, 100, 0);
     if(nfds == -1) {
-        tfm->slogf(SHADOW_LOG_LEVEL_CRITICAL, tfm->_base.id,
-                "error in epoll_wait");
+        critical("%s: error in epoll_wait", tfm->_base.id);
     } else {
         /* activate correct component for every socket thats ready */
         for(gint i = 0; i < nfds; i++) {
@@ -483,11 +472,37 @@ static void _torflowmanager_activateBase(TorFlowManager* tfm) {
             if(d == torflowbase_getControlSD(&tfm->_base)) {
                 torflowbase_activate(&tfm->_base, d, e);
             } else {
-                tfm->slogf(SHADOW_LOG_LEVEL_WARNING, tfm->_base.id,
-                        "got readiness on unknown descriptor: %i", d);
+                warning("%s: got readiness on unknown descriptor: %i", tfm->_base.id, d);
             }
         }
     }
+}
+
+void torflowmanager_registerTimer(TorFlowManager* tfm, TorFlowTimer* timer) {
+    g_assert(tfm);
+
+    /* track the timer in a table */
+    gint timerFD = torflowtimer_getFD(timer);
+    g_hash_table_replace(tfm->timers, GINT_TO_POINTER(timerFD), timer);
+
+    /* make sure epoll notices when it expires */
+    torflowutil_epoll(tfm->ed, timerFD, EPOLL_CTL_ADD, EPOLLIN);
+}
+
+void _torflowmanager_deregisterTimer(TorFlowManager* tfm, TorFlowTimer* timer) {
+    g_assert(tfm);
+
+    /* we no longer need to track this timer */
+    gint timerFD = torflowtimer_getFD(timer);
+    g_hash_table_remove(tfm->timers, GINT_TO_POINTER(timerFD));
+
+    /* we don't want to watch for expirations */
+    torflowutil_epoll(tfm->ed, timerFD, EPOLL_CTL_DEL, EPOLLIN);
+}
+
+gint torflowmanager_getEpollDescriptor(TorFlowManager* tfm) {
+    g_assert(tfm);
+    return tfm->ed;
 }
 
 void torflowmanager_ready(TorFlowManager* tfm) {
@@ -499,8 +514,7 @@ void torflowmanager_ready(TorFlowManager* tfm) {
 
 	gint nfds = epoll_wait(tfm->ed, epevs, 1000, 0);
 	if(nfds == -1) {
-		tfm->slogf(SHADOW_LOG_LEVEL_CRITICAL, __FUNCTION__,
-				"epoll_wait error %i: %s", errno, g_strerror(errno));
+		critical("epoll_wait error %i: %s", errno, g_strerror(errno));
 		return;
 	}
 
@@ -510,19 +524,26 @@ void torflowmanager_ready(TorFlowManager* tfm) {
 		uint32_t e = epevs[i].events;
 
 		if(d == tfm->baseED) {
-            tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
-                "handling events %i for fd %i", e, d);
+            debug("handling events %i for fd %i", e, d);
             _torflowmanager_activateBase(tfm);
 		} else {
-            TorFlowProber* prober = g_hash_table_lookup(tfm->probers, GINT_TO_POINTER(d));
-            if(prober) {
-                tfm->slogf(SHADOW_LOG_LEVEL_DEBUG, __FUNCTION__,
-                    "handling events %i for fd %i", e, d);
-                torflow_ready((TorFlow*)prober);
-            } else {
-                tfm->slogf(SHADOW_LOG_LEVEL_WARNING, __FUNCTION__,
-                        "helper lookup failed for fd '%i'", d);
-            }
+		    TorFlowTimer* timer = g_hash_table_lookup(tfm->timers, GINT_TO_POINTER(d));
+		    if(timer != NULL) {
+		        /* check if it expired and call the callback if it did */
+		        if(torflowtimer_check(timer)) {
+		            /* it called the callback function, so we are done with it */
+		            _torflowmanager_deregisterTimer(tfm, timer);
+		        }
+		    } else{
+                TorFlowProber* prober = g_hash_table_lookup(tfm->probers, GINT_TO_POINTER(d));
+                if(prober) {
+                    debug("handling events %i for fd %i", e, d);
+                    torflow_ready((TorFlow*)prober, tfm);
+                } else {
+                    warning("helper lookup failed for fd '%i'", d);
+                }
+		    }
+
 		}
 	}
 }
@@ -550,9 +571,14 @@ void torflowmanager_free(TorFlowManager* tfm) {
 	    }
 	}
 
+	if(tfm->timers) {
+	    g_hash_table_destroy(tfm->timers);
+	}
+
 	if(tfm->ed) {
 		close(tfm->ed);
 	}
 
 	g_free(tfm);
 }
+

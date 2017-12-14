@@ -55,8 +55,7 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver) {
 	/* create the client socket and get a socket descriptor */
 	gint socksd = socket(AF_INET, (SOCK_STREAM | SOCK_NONBLOCK), 0);
 	if(socksd == -1) {
-		tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"unable to start client socksd: error in socket");
+	    critical("%s: unable to start client socksd: error in socket", tf->_base.id);
 		return -1;
 	}
 
@@ -70,8 +69,7 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver) {
 	/* connect to server. since we are non-blocking, we expect this to return EINPROGRESS */
 	gint res = connect(socksd, (struct sockaddr *) &serverAddress, sizeof(serverAddress));
 	if (res == -1 && errno != EINPROGRESS) {
-		tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"unable to start client socksd: error in connect");
+	    critical("%s: unable to start client socksd: error in connect", tf->_base.id);
 		return -1;
 	}
 
@@ -85,7 +83,7 @@ gint torflow_newDownload(TorFlow* tf, TorFlowFileServer* fileserver) {
 
 	/* specify the events to watch for on this socket.
 	 * the client wants to know when it can send a message. */
-	torflowutil_epoll(tf->internal->epolld, socksd, EPOLL_CTL_ADD, EPOLLOUT, tf->_base.slogf);
+	torflowutil_epoll(tf->internal->epolld, socksd, EPOLL_CTL_ADD, EPOLLOUT);
 
 	TorFlowDownload* tfd = g_new0(TorFlowDownload, 1);
 	tfd->socksd = socksd;
@@ -126,7 +124,7 @@ void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath) {
 
 	TorFlowDownload* tfd = g_hash_table_lookup(tf->internal->downloads, GINT_TO_POINTER(socksd));
 	if(tfd) {
-		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLOUT, tf->_base.slogf);
+		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLOUT);
 		tfd->socksState = S_HTTPSENDREQUEST;
 		if(tfd->filePath) {
 			g_free(tfd->filePath);
@@ -135,27 +133,26 @@ void torflow_startDownload(TorFlow* tf, gint socksd, gchar* filePath) {
 	}
 }
 
-static void _torflow_callFileServerConnected(CallbackData* cd) {
+static void _torflow_callFileServerConnected(TorFlow* tf, CallbackData* cd) {
 	g_assert(cd && cd->tf);
 	cd->tf->internal->eventHandlers.onFileServerConnected(cd->tf, cd->socksd);
 	g_free(cd);
 }
 
-static void _torflow_callFileServerTimeout(CallbackData* cd) {
-	g_assert(cd && cd->tf);
-	cd->tf->internal->eventHandlers.onFileServerTimeout(cd->tf);
-	g_free(cd);
+static void _torflow_callFileServerTimeout(TorFlow* tf, gpointer arg) {
+	g_assert(tf);
+	tf->internal->eventHandlers.onFileServerTimeout(tf);
 }
 
-static void _torflow_activateSocksDownload(TorFlow* tf, TorFlowDownload* tfd, uint32_t events) {
+static void _torflow_activateSocksDownload(TorFlow* tf, TorFlowDownload* tfd, uint32_t events, TorFlowManager* tfm) {
 	g_assert(tf);
 	g_assert(tfd);
 
 	if(events & EPOLLOUT) {
-		tf->_base.slogf(SHADOW_LOG_LEVEL_DEBUG, tf->_base.id, "EPOLLOUT is set");
+		debug("%s: EPOLLOUT is set", tf->_base.id);
 	}
 	if(events & EPOLLIN) {
-		tf->_base.slogf(SHADOW_LOG_LEVEL_DEBUG, tf->_base.id, "EPOLLIN is set");
+		debug("%s: EPOLLIN is set", tf->_base.id);
 	}
 
 beginsocks:
@@ -180,20 +177,17 @@ beginsocks:
 
         if(bytes < 0) {
             /* socket has an error */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "error on socket %i in S_SOCKSSENDINIT: %i: %s", tfd->socksd, bytes, g_strerror(errno));
+            warning("%s: error on socket %i in S_SOCKSSENDINIT: %i: %s", tf->_base.id, tfd->socksd, bytes, g_strerror(errno));
             tfd->socksState = S_ERROR;
             goto beginsocks;
         } else if(bytes == 0) {
             /* socket closed */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "on socket %i socket closed in S_SOCKSSENDINIT", tfd->socksd);
+            warning("%s: on socket %i socket closed in S_SOCKSSENDINIT", tf->_base.id, tfd->socksd);
             tfd->socksState = S_ERROR;
             goto beginsocks;
         }
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-            "on socket %i socket accepted %i/3 bytes in S_SOCKSSENDINIT", tfd->socksd, bytes);
+        info("%s: on socket %i socket accepted %i/3 bytes in S_SOCKSSENDINIT", tf->_base.id, tfd->socksd, bytes);
         tfd->sendOffset += (guint)bytes;
 
         if(tfd->sendOffset < 3) {
@@ -205,7 +199,7 @@ beginsocks:
 		g_assert(tfd->sendOffset == 3);
 		tfd->sendOffset = 0;
 
-		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN, tf->_base.slogf);
+		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN);
 		tfd->socksState = S_SOCKSRECVINIT;
 		break;
 	}
@@ -217,20 +211,17 @@ beginsocks:
 
         if(bytes < 0) {
             /* socket has an error */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "error on socket %i in S_SOCKSRECVINIT: %i: %s", tfd->socksd, bytes, g_strerror(errno));
+            warning("%s: error on socket %i in S_SOCKSRECVINIT: %i: %s", tf->_base.id, tfd->socksd, bytes, g_strerror(errno));
             tfd->socksState = S_ERROR;
             goto beginsocks;
         } else if(bytes == 0) {
             /* socket closed */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "on socket %i socket closed in S_SOCKSRECVINIT", tfd->socksd);
+            warning("%s: on socket %i socket closed in S_SOCKSRECVINIT", tf->_base.id, tfd->socksd);
             tfd->socksState = S_ERROR;
             goto beginsocks;
         }
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-            "on socket %i socket got %i/2 bytes in S_SOCKSRECVINIT", tfd->socksd, bytes);
+        info("%s: on socket %i socket got %i/2 bytes in S_SOCKSRECVINIT", tf->_base.id, tfd->socksd, bytes);
         tfd->recvOffset += (guint)bytes;
 
         if(tfd->recvOffset < 2) {
@@ -242,14 +233,13 @@ beginsocks:
         tfd->recvOffset = 0;
 
 		if(tfd->recvbuf[0] != 0x05 || tfd->recvbuf[1] != 0x00) {
-			tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"socks init error: code %x%x", bytes, tfd->recvbuf[0], tfd->recvbuf[1]);
+		    critical("%s: socks init error: code %x%x", tf->_base.id, bytes, tfd->recvbuf[0], tfd->recvbuf[1]);
             tfd->socksState = S_ERROR;
             goto beginsocks;
 		}
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "socks init success");
-        torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLOUT, tf->_base.slogf);
+        info("%s: socks init success", tf->_base.id);
+        torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLOUT);
         tfd->socksState = S_SOCKSSENDCONNECT;
 
 		break;
@@ -274,20 +264,17 @@ beginsocks:
 
         if(bytes < 0) {
             /* socket has an error */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "error on socket %i in S_SOCKSSENDCONNECT: %i: %s", tfd->socksd, bytes, g_strerror(errno));
+            warning("%s: error on socket %i in S_SOCKSSENDCONNECT: %i: %s", tf->_base.id, tfd->socksd, bytes, g_strerror(errno));
             tfd->socksState = S_ERROR;
             goto beginsocks;
         } else if(bytes == 0) {
             /* socket closed */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "on socket %i socket closed in S_SOCKSSENDCONNECT", tfd->socksd);
+            warning("%s: on socket %i socket closed in S_SOCKSSENDCONNECT", tf->_base.id, tfd->socksd);
             tfd->socksState = S_ERROR;
             goto beginsocks;
         }
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-            "on socket %i socket accepted %i/10 bytes in S_SOCKSSENDCONNECT", tfd->socksd, bytes);
+        info("%s: on socket %i socket accepted %i/10 bytes in S_SOCKSSENDCONNECT", tf->_base.id, tfd->socksd, bytes);
         tfd->sendOffset += (guint)bytes;
 
         if(tfd->sendOffset < 10) {
@@ -298,12 +285,12 @@ beginsocks:
 		g_assert(tfd->sendOffset == 10);
 		tfd->sendOffset = 0;
 
-		tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-		        "sent socks server connect to %s at %s:%u",
+		info("%s: sent socks server connect to %s at %s:%u",
+		        tf->_base.id,
 		        torflowfileserver_getName(tfd->fileserver),
 		        torflowfileserver_getHostIPStr(tfd->fileserver), ntohs(netPort));
 
-		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN, tf->_base.slogf);
+		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN);
 		tfd->socksState = S_SOCKSRECVCONNECT;
 		break;
 	}
@@ -315,20 +302,17 @@ beginsocks:
 
         if(bytes < 0) {
             /* socket has an error */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "error on socket %i in S_SOCKSRECVCONNECT: %i: %s", tfd->socksd, bytes, g_strerror(errno));
+            warning("%s: error on socket %i in S_SOCKSRECVCONNECT: %i: %s", tf->_base.id, tfd->socksd, bytes, g_strerror(errno));
             tfd->socksState = S_ERROR;
             goto beginsocks;
         } else if(bytes == 0) {
             /* socket closed */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "on socket %i socket closed in S_SOCKSRECVCONNECT", tfd->socksd);
+            warning("%s: on socket %i socket closed in S_SOCKSRECVCONNECT", tf->_base.id, tfd->socksd);
             tfd->socksState = S_ERROR;
             goto beginsocks;
         }
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-            "on socket %i socket got %i/10 bytes in S_SOCKSRECVCONNECT", tfd->socksd, bytes);
+        info("%s: on socket %i socket got %i/10 bytes in S_SOCKSRECVCONNECT", tf->_base.id, tfd->socksd, bytes);
         tfd->recvOffset += (guint)bytes;
 
         if(tfd->recvOffset < 10) {
@@ -349,9 +333,9 @@ beginsocks:
 			/* ... but we dont support it */
 			g_assert(serverAddress == 0 && serverPort == 0);
 
-			tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "socks connect success");
+			info("%s: socks connect success", tf->_base.id);
 
-			torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0, tf->_base.slogf);
+			torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0);
 			tfd->socksState = S_READY;
 
 			if(tf->internal->eventHandlers.onFileServerConnected) {
@@ -359,18 +343,19 @@ beginsocks:
 				CallbackData* cd = g_new0(CallbackData, 1);
 				cd->tf = tf;
 				cd->socksd = tfd->socksd;
-				tf->_base.scbf((ShadowPluginCallbackFunc)_torflow_callFileServerConnected, cd, 1000);
+
+				TorFlowTimer* timer = torflowtimer_new((GFunc)_torflow_callFileServerConnected, tf, cd);
+				torflowtimer_arm(timer, 1);
+				torflowmanager_registerTimer(tfm, timer);
 			}
 		} else if(tfd->recvbuf[0] == 0x05 && tfd->recvbuf[1] == 0x06 && tfd->recvbuf[2] == 0x00 && tfd->recvbuf[3] == 0x01) {
-			tf->_base.slogf(SHADOW_LOG_LEVEL_MESSAGE, tf->_base.id,
-				"socks connect timed out");
+			message("%s: socks connect timed out", tf->_base.id);
 			tfd->socksState = S_ERROR;
             goto beginsocks;
 		} else {
-			tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"socks connect error (read %i bytes, code %x%x%x%x)", bytes,
+		    critical("%s: socks connect error (read %i bytes, code %x%x%x%x)", tf->_base.id, bytes,
 				tfd->recvbuf[0], tfd->recvbuf[1], tfd->recvbuf[2], tfd->recvbuf[3]);
-			//tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
+			//tf->_base.slogf(G_LOG_LEVEL_CRITICAL, tf->_base.id,
 			//	"socks connect error (read %i bytes)", bytes);
             tfd->socksState = S_ERROR;
             goto beginsocks;
@@ -392,20 +377,17 @@ beginsocks:
 
 		if(bytes < 0) {
             /* socket has an error */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "error on socket %i in S_HTTPSENDREQUEST: %i: %s", tfd->socksd, bytes, g_strerror(errno));
+		    warning("%s: error on socket %i in S_HTTPSENDREQUEST: %i: %s", tf->_base.id, tfd->socksd, bytes, g_strerror(errno));
             tfd->socksState = S_ERROR;
             goto beginsocks;
         } else if(bytes == 0) {
             /* socket closed */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "on socket %i socket closed in S_HTTPSENDREQUEST", tfd->socksd);
+            warning("%s: on socket %i socket closed in S_HTTPSENDREQUEST", tf->_base.id, tfd->socksd);
             tfd->socksState = S_ERROR;
             goto beginsocks;
         }
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-            "on socket %i socket accepted %i/%i bytes in S_HTTPSENDREQUEST", tfd->socksd, bytes, (gint)request->len);
+        info("%s: on socket %i socket accepted %i/%i bytes in S_HTTPSENDREQUEST", tf->_base.id, tfd->socksd, bytes, (gint)request->len);
         tfd->sendOffset += (guint)bytes;
 
         if(tfd->sendOffset < ((guint)request->len)) {
@@ -419,7 +401,7 @@ beginsocks:
 
 		clock_gettime(CLOCK_REALTIME, &(tfd->start));
 
-		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN, tf->_base.slogf);
+		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, EPOLLIN);
 		tfd->socksState = S_HTTPRECVREPLY;
 		break;
 	}
@@ -431,20 +413,17 @@ beginsocks:
 
         if(bytes < 0) {
             /* socket has an error */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "error on socket %i in S_HTTPRECVREPLY: %i: %s", tfd->socksd, bytes, g_strerror(errno));
+            warning("%s: error on socket %i in S_HTTPRECVREPLY: %i: %s", tf->_base.id, tfd->socksd, bytes, g_strerror(errno));
             tfd->socksState = S_ERROR;
             goto beginsocks;
         } else if(bytes == 0) {
             /* socket closed */
-            tf->_base.slogf(SHADOW_LOG_LEVEL_WARNING, tf->_base.id,
-                "on socket %i socket closed in S_HTTPRECVREPLY", tfd->socksd);
+            warning("%s: on socket %i socket closed in S_HTTPRECVREPLY", tf->_base.id, tfd->socksd);
             tfd->socksState = S_ERROR;
             goto beginsocks;
         }
 
-        tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id,
-            "on socket %i socket got %i/10 bytes in S_HTTPRECVREPLY", tfd->socksd, bytes);
+        info("%s: on socket %i socket got %i/10 bytes in S_HTTPRECVREPLY", tf->_base.id, tfd->socksd, bytes);
         tfd->recvOffset += (guint)bytes;
 		tfd->recvbuf[tfd->recvOffset] = 0x0;
 
@@ -468,12 +447,12 @@ beginsocks:
 				tfd->contentLength = (gsize) atoi(clen);
 				tfd->remaining = tfd->contentLength - (bytes - (payload - tfd->recvbuf));
 				tfd->recvOffset = 0;
-				tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "http payload will be %i bytes", tfd->contentLength);
+				info("%s: http payload will be %i bytes", tf->_base.id, tfd->contentLength);
 			}
 		} else {
 			tfd->remaining -= bytes;
 			tfd->recvOffset = 0;
-			tf->_base.slogf(SHADOW_LOG_LEVEL_INFO, tf->_base.id, "got %i bytes", bytes);
+			info("%s: got %i bytes", tf->_base.id, bytes);
 		}
 
 		/* finished a download probe - only the prober will get here bc senders stop reading */
@@ -489,7 +468,7 @@ beginsocks:
 			tfd->recvOffset = 0;
 			memset(tfd->recvbuf, 0, BUFSIZE);
 
-			torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0, tf->_base.slogf);
+			torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0);
 			tfd->socksState = S_READY;
 
 			if(tf->internal->eventHandlers.onFileDownloadComplete) {
@@ -501,7 +480,7 @@ beginsocks:
 	}
 
 	case S_READY: {
-		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0, tf->_base.slogf);
+		torflowutil_epoll(tf->internal->epolld, tfd->socksd, EPOLL_CTL_MOD, 0);
 		break;
 	}
 
@@ -512,7 +491,10 @@ beginsocks:
             CallbackData* cd = g_new0(CallbackData, 1);
             cd->tf = tf;
             cd->socksd = 0;
-            tf->_base.scbf((ShadowPluginCallbackFunc)_torflow_callFileServerTimeout, cd, 1000);
+
+            TorFlowTimer* timer = torflowtimer_new((GFunc)_torflow_callFileServerTimeout, tf, NULL);
+            torflowtimer_arm(timer, 1);
+            torflowmanager_registerTimer(tfm, timer);
         }
         break;
     }
@@ -536,7 +518,6 @@ static void _torflow_onFree(TorFlow* tf) {
 }
 
 void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
-		ShadowLogFunc slogf, ShadowCreateCallbackFunc scbf,
 		in_port_t controlPort, in_port_t socksPort, gint workerID) {
 	g_assert(tf);
 	g_assert(eventHandlers);
@@ -546,8 +527,7 @@ void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 	/* use epoll to asynchronously watch events for all of our sockets */
 	tf->internal->epolld = epoll_create(1);
 	if(tf->internal->epolld == -1) {
-		tf->_base.slogf(SHADOW_LOG_LEVEL_ERROR, tf->_base.id,
-				"Error in main epoll_create");
+		error("%s: Error in main epoll_create", tf->_base.id);
 		close(tf->internal->epolld);
 		return;
 	}
@@ -561,7 +541,7 @@ void torflow_init(TorFlow* tf, TorFlowEventCallbacks* eventHandlers,
 	/* intercept onFree so we can properly free our data */
 	events.onFree = (FreeFunc) _torflow_onFree;
 
-	torflowbase_init((TorFlowBase*)tf, &events, slogf, scbf, controlPort, tf->internal->epolld, workerID);
+	torflowbase_init((TorFlowBase*)tf, &events, controlPort, tf->internal->epolld, workerID);
 }
 
 void torflow_start(TorFlow* tf) {
@@ -578,15 +558,14 @@ in_port_t torflow_getHostBoundSocksPort(TorFlow* tf) {
     return tf->internal->hostBoundSocksPort;
 }
 
-void torflow_ready(TorFlow* tf) {
+void torflow_ready(TorFlow* tf, TorFlowManager* tfm) {
 	g_assert(tf);
 
 	/* collect the events that are ready */
 	struct epoll_event epevs[100];
 	gint nfds = epoll_wait(tf->internal->epolld, epevs, 100, 0);
 	if(nfds == -1) {
-		tf->_base.slogf(SHADOW_LOG_LEVEL_CRITICAL, tf->_base.id,
-				"error in epoll_wait");
+		critical("%s: error in epoll_wait", tf->_base.id);
 	} else {
 		/* activate correct component for every socket thats ready */
 		for(gint i = 0; i < nfds; i++) {
@@ -598,7 +577,7 @@ void torflow_ready(TorFlow* tf) {
 				/* check if we have a socks connection */
 				TorFlowDownload* tfd = g_hash_table_lookup(tf->internal->downloads, GINT_TO_POINTER(d));
 				if(tfd && d == tfd->socksd) {
-					_torflow_activateSocksDownload(tf, tfd, e);
+					_torflow_activateSocksDownload(tf, tfd, e, tfm);
 				}
 			}
 		}

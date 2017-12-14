@@ -4,7 +4,7 @@
 
 #include "torflow.h"
 
-void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events, ShadowLogFunc slogf) {
+void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events) {
 	struct epoll_event ev;
 	memset(&ev, 0, sizeof(struct epoll_event));
 	ev.events = events;
@@ -12,9 +12,8 @@ void torflowutil_epoll(gint ed, gint fd, gint operation, guint32 events, ShadowL
 
 	/* start watching the client socket */
 	gint res = epoll_ctl(ed, operation, fd, &ev);
-	if(res == -1 && slogf) {
-		slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
-				"unable to start client: error in epoll_ctl");
+	if(res == -1) {
+		error("unable to start client: error in epoll_ctl");
 	}
 }
 
@@ -39,14 +38,11 @@ gchar* torflowutil_ipToNewString(in_addr_t netIP) {
 	return g_string_free(result, FALSE);
 }
 
-in_addr_t torflowutil_lookupAddress(const gchar* name, ShadowLogFunc slogf) {
+in_addr_t torflowutil_lookupAddress(const gchar* name) {
 	struct addrinfo* info = NULL;
 	gint ret = getaddrinfo((gchar*) name, NULL, NULL, &info);
 	if(ret != 0 || !info) {
-	    if(slogf) {
-            slogf(SHADOW_LOG_LEVEL_ERROR, __FUNCTION__,
-                    "hostname lookup failed '%s'", name);
-	    }
+        error("hostname lookup failed '%s'", name);
 		return 0;
 	}
 	in_addr_t netIP = ((struct sockaddr_in*)(info->ai_addr))->sin_addr.s_addr;
