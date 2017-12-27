@@ -16,15 +16,20 @@ add_cflags("-fPIC -fno-inline -fno-strict-aliasing -std=gnu11 -U_FORTIFY_SOURCE"
 
 ## torflow source files
 set(sources
-    torflow-main.c
-    torflow-manager.c
-    torflow-base.c
     torflow.c
-    torflow-prober.c
-    torflow-aggregator.c
-    torflow-fileserver.c
+    torflow-authority.c
+    torflow-config.c
+    torflow-database.c
+    torflow-event-manager.c
+    torflow-file-client.c
+    torflow-file-listener.c
+    torflow-file-server.c
+    torflow-peer.c
+    torflow-probe.c
+    torflow-relay.c
+    torflow-slice.c
     torflow-timer.c
-    torflow-utility.c
+    torflow-torctl-client.c
 )
 
 ## create and install a dynamic library that can plug into shadow

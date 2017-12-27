@@ -1,38 +1,83 @@
-"torflow": a Shadow plug-in
-=========================
+## "torflow": a Shadow plug-in
 
-This plug-in duplicates the functionality of TorFlow within Shadow.
+This plug-in duplicates the functionality of TorFlow, Tor's bandwidth 
+measurement system, within Shadow.
 
-usage
------
+## Usage
 
 Torflow arguments should be configured as follows:
-	arguments="filename pausetime workers sliceSize nodeCap socksPort ctlPort server:port"
+	arguments="torflow key=value ..."
 
-The arguments are listed below, along with the value used by real TorFlow if
-applicable, and an explanation.
+The valid keys and the type of the valid values are listed below, along with any defaults.
+The format is: `key`:ValueType (default=val) [Mode=ValidModes] - explanation
 
- + filename: The path to which the output v3bw file should be written.
+Specifying the run mode is option, the default mode is TorFlow:
 
- + pausetime (0): The amount of time in seconds to pause between complete network
-scans. Useful for speeding up debug trials, especially in the minimal case.
+ + `Mode`:String (default=TorFlow) [Mode=TorFlow,FileServer]  
+    The running mode of this instance. Valid values are 'TorFlow' and 'FileServer'  
+    TorFlow mode runs a full network scanner, FileServer mode runs only a server  
+    that serves as the server side of network scanner connections.  
+      
+    The default mode ('TorFlow') is to run a full TorFlow instance that  
+    runs a file server and a network scanner that transfers data from  
+    the file server through pairs of Tor relays. The output of each round  
+    of scans is a bandwidth file that can be used by directory authorities  
+    to vote on and produce a network consensus.  
+      
+    The other mode ('FileServer') is to run a file server only, that can  
+    be connected to from another full TorFlow instance. In this case, the  
+    network info (name and port) of this FileServer instance should be  
+    provided to a TorFlow instance using the FileServerInfo option.  
 
- + workers (4): The number of TorFlow workers constructing measurement circuits in
-parallel.
+The following are required arguments (default values do not exist):
 
- + sliceSize (50): The number of relays to include in a single slice. Slices that
-contain no exit relays, or only exit nodes, are skipped completely.
+ + `V3BWFilePath`:String [Mode=TorFlow]  
+    The path to which the output v3bw file should be written.
 
- + nodeCap (0.05): The fraction of network bandwidth any one relay is allowed to
-have in the final measurement. Any relay that has a measured bandwidth than
-(nodeCap * sum of measured bandwidths) has its measurement clipped to that
-value.
+ + `TorSocksPort`:Integer [Mode=TorFlow]  
+    The Tor SOCKS server port, set in the torrc file of the Tor instance.
 
- + socksPort: The port used to connect to the Tor instance.
+ + `TorControlPort`:Integer [Mode=TorFlow]  
+    The Tor Control server port, set in the torrc file of the Tor instance.
 
- + ctlPort: The TorControl port, set in the arguments to the tor plugin.
+ + `FileServerInfo`:String/Integer [Mode=TorFlow]  
+    The network name and port given as 'name:port' of a TorFlow file server  
+    that our probes will connect with to perform measurements.  
+    This argument can be supplied multiple times to append several such  
+    servers to the list of servers used during the probes.
 
- + server: The name of the test fileserver which TorFlow builds circuits to connect to.
+The following are optional arguments (default values exist):
 
- + port: The port to connect to on the test fileserver.
+ + `LogLevel`:String (default=info) [Mode=TorFlow,FileServer]  
+    The log level to use while running TorFlow. Valid values are:  
+    'debug' > 'info' > 'message' > 'warning'  
+    Messages logged at a higher level than the configured level will be filtered.
+
+ + `ListenPort`:Integer (default=18080) [Mode=TorFlow,FileServer]  
+    The port that the file server should listen on for incoming connections  
+    from TorFlow network scanner connections.
+
+ + `ScanIntervalSeconds`:Integer (default=0) [Mode=TorFlow]  
+    The amount of time in seconds to pause between complete network scans.  
+    Useful for speeding up debug trials, especially in the minimal case.
+
+ + `NumParallelProbes`:Integer (default=4) [Mode=TorFlow]  
+    The number of TorFlow workers constructing measurement circuits in parallel.
+
+ + `NumRelaysPerSlice`:Integer (default=50) [Mode=TorFlow]  
+    The number of relays to include in a single slice. Slices that  
+    contain no exit relays, or only exit relays, are skipped completely.
+
+ + `MaxRelayWeightFraction`:Float (default=0.05) [Mode=TorFlow]  
+    The fraction of network bandwidth any one relay is allowed to have in the  
+    final measurement. Any relay that has a measured bandwidth greater than  
+    (MaxRelayWeightFraction * sum of measured bandwidths) has its measurement  
+    clipped to that value.
+
+ + `ProbeTimeoutSeconds`:Integer (default=300) [Mode=TorFlow]  
+    Time in seconds to wait before marking an unfinished probe as failed.
+
+ + `NumProbesPerRelay`:Integer (default=5) [Mode=TorFlow]  
+    Number of times we need to measure each relay before a slice is done.
+
 

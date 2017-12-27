@@ -3,9 +3,6 @@
  * See LICENSE for licensing information
  */
 
-#include <fcntl.h>
-#include <sys/timerfd.h>
-
 #include "torflow.h"
 
 struct _TorFlowTimer {
