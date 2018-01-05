@@ -573,6 +573,9 @@ TorFlowTorCtlClient* torflowtorctlclient_new(TorFlowEventManager* manager, in_po
 void torflowtorctlclient_free(TorFlowTorCtlClient* torctl) {
     g_assert(torctl);
 
+    /* make sure we dont get a callback on our torctl instance which we are about to free and invalidate */
+    torfloweventmanager_deregister(torctl->manager, torctl->descriptor);
+
     if(torctl->descriptor) {
         close(torctl->descriptor);
     }
