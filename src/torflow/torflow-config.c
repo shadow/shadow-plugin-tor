@@ -32,11 +32,20 @@ static gboolean _torflowconfig_parseV3BWInitFilePath(TorFlowConfig* config, gcha
 
     if(config->v3bwInitFilePath != NULL) {
         g_free(config->v3bwInitFilePath);
+        config->v3bwInitFilePath = NULL;
     }
 
-    config->v3bwInitFilePath = g_strdup(value);
+    /* make sure we can open the path */
+    gchar* path = g_strdup(value);
 
-    return TRUE;
+    /* make sure the path exists */
+    if(g_file_test(path, G_FILE_TEST_IS_REGULAR)) {
+        config->v3bwInitFilePath = path;
+        return TRUE;
+    } else {
+        g_free(path);
+        return FALSE;
+    }
 }
 
 static gboolean _torflowconfig_parseScanInterval(TorFlowConfig* config, gchar* value) {

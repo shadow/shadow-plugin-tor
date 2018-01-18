@@ -30,6 +30,8 @@ static void _torflowauthority_getDescriptors(TorFlowAuthority* authority);
 static void _torflowauthority_resumeScanning(TorFlowAuthority* authority, gpointer userData) {
     g_assert(authority);
 
+    message("%s: starting new round", authority->id);
+
     /* get descriptors, and once they are here, parse them and start the next round */
     _torflowauthority_getDescriptors(authority);
 }
@@ -50,6 +52,8 @@ static void _torflowauthority_scanPauseTimerReadable(TorFlowTimer* timer, TorFlo
 }
 
 static void _torflowauthority_onRoundComplete(TorFlowAuthority* authority) {
+    info("round complete after completing %u probes", authority->completeProbesThisRound);
+
     /* write the new v3bw file */
     torflowdatabase_writeBandwidthFile(authority->database);
 
@@ -71,6 +75,7 @@ static void _torflowauthority_countProbesRemaining(TorFlowSlice* slice, guint* n
     g_assert(slice);
     g_assert(numProbesRemaining);
     *numProbesRemaining += torflowslice_getNumProbesRemaining(slice);
+    torflowslice_logStatus(slice);
 }
 
 static void _torflowauthority_logProgress(TorFlowAuthority* authority) {
@@ -90,12 +95,13 @@ static void _torflowauthority_logProgress(TorFlowAuthority* authority) {
         g_queue_foreach(authority->slices, (GFunc)_torflowauthority_countProbesRemaining, &remaining);
     }
 
-    gdouble percentage = (gdouble)authority->completeProbesThisRound / (gdouble)authority->totalProbesThisRound;
+    guint progressComplete = remaining >= authority->totalProbesThisRound ? 0 : authority->totalProbesThisRound-remaining;
+    gdouble percentage = (gdouble)progressComplete / (gdouble)authority->totalProbesThisRound;
     percentage *= 100.0f;
 
-    message("%s: %u probes in progress, %u/%u probes complete (%.02f\%), %u probes remaining",
-            authority->id, inProgress,
-            authority->completeProbesThisRound, authority->totalProbesThisRound, percentage, remaining);
+    message("%s: %u probes in progress, %u probes complete, %u probes remaining, round progress %u/%u (%.02f\%)",
+            authority->id, inProgress, authority->completeProbesThisRound, remaining,
+            progressComplete, authority->totalProbesThisRound, percentage);
 }
 
 static void _torflowauthority_onProbeComplete(TorFlowAuthority* authority, guint probeID,
@@ -120,6 +126,13 @@ static void _torflowauthority_onProbeComplete(TorFlowAuthority* authority, guint
     // TODO after the first round, once we have measurements for all relays,
     // then we can write new v3bw file after every slice to speed up bw file creation
 
+    /* if we still have slices, start some probes on their relays */
+    if(!g_queue_is_empty(authority->slices)) {
+        /* we still need more measurements. note that the remaining slices may fail if
+         * they have no exits, which would mean the round is over. */
+        _torflowauthority_launchProbes(authority);
+    }
+
     /* check if we need more probes or if the round is done */
     gboolean startNextRound = FALSE;
     if(g_queue_is_empty(authority->slices)) {
@@ -132,9 +145,6 @@ static void _torflowauthority_onProbeComplete(TorFlowAuthority* authority, guint
             /* all probes are done */
             startNextRound = TRUE;
         }
-    } else {
-        /* we still need more measurements */
-        _torflowauthority_launchProbes(authority);
     }
 
     _torflowauthority_logProgress(authority);
@@ -228,7 +238,9 @@ static GQueue* _torflowauthority_sliceRelays(TorFlowAuthority* authority) {
 
     /* get relays sorted by decreasing bandwidth */
     GQueue* relaysToMeasure = torflowdatabase_getMeasureableRelays(authority->database);
-    guint totalMeasureableRelays = g_queue_get_length(relaysToMeasure);
+    guint totalMeasurableRelays = g_queue_get_length(relaysToMeasure);
+
+    message("%s: we have %u measurable relays", authority->id, totalMeasurableRelays);
 
     /* break relays into slices */
     GQueue* slices = g_queue_new();
@@ -240,7 +252,7 @@ static GQueue* _torflowauthority_sliceRelays(TorFlowAuthority* authority) {
 
         if(!slice) {
             guint sliceID = g_queue_get_length(slices);
-            gdouble percentile = 1.0f - ((gdouble)g_queue_get_length(relaysToMeasure)/(gdouble)totalMeasureableRelays);
+            gdouble percentile = 1.0f - ((gdouble)g_queue_get_length(relaysToMeasure)/(gdouble)totalMeasurableRelays);
             slice = torflowslice_new(sliceID, percentile, numProbesPerRelay);
             g_queue_push_tail(slices, slice);
         }
@@ -248,9 +260,16 @@ static GQueue* _torflowauthority_sliceRelays(TorFlowAuthority* authority) {
         torflowslice_addRelay(slice, g_queue_pop_head(relaysToMeasure));
 
         if(torflowslice_getLength(slice) >= torflowconfig_getNumRelaysPerSlice(authority->config)) {
+            /* log slice info */
+            torflowslice_logStatus(slice);
             /* set to NULL so we create a new one next time */
             slice = NULL;
         }
+    }
+
+    /* the last slice may not be full, but log info anyway */
+    if(slice) {
+        torflowslice_logStatus(slice);
     }
 
     return slices;

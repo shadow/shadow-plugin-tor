@@ -122,6 +122,7 @@ static void _torflowdatabase_storeRelay(TorFlowDatabase* database, TorFlowRelay*
         torflowrelay_free(newRelay);
     } else {
         g_hash_table_replace(database->relaysByIdentity, (gpointer)identity, newRelay);
+        info("stored relay %s", identity);
     }
 }
 
@@ -302,8 +303,12 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
     }
 
     // calculate averages
-    gdouble avgMeanBW = (gdouble)totalMeanBW/(gdouble)numMeasuredNodes;
-    gdouble avgFilteredBW = (gdouble)totalFilteredBW/(gdouble)numMeasuredNodes;
+    gdouble avgMeanBW = 0.0f;
+    gdouble avgFilteredBW = 0.0f;
+    if(numMeasuredNodes > 0) {
+        avgMeanBW = (gdouble)totalMeanBW/(gdouble)numMeasuredNodes;
+        avgFilteredBW = (gdouble)totalFilteredBW/(gdouble)numMeasuredNodes;
+    }
     guint totalBW = 0;
 
     // loop through nodes and calculate new bandwidths
@@ -318,7 +323,15 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
                 guint advertisedBW = torflowrelay_getAdvertisedBandwidth(relay);
 
                 // use the better of the mean and filtered ratios, because that's what torflow does
-                gdouble bwRatio = fmax((gdouble)relayMeanBW/avgMeanBW, (gdouble)relayFilteredBW/avgFilteredBW);
+                gdouble bwRatio = 0.0f;
+
+                if(avgMeanBW > 0 && avgFilteredBW > 0) {
+                    bwRatio = fmax((gdouble)relayMeanBW/avgMeanBW, (gdouble)relayFilteredBW/avgFilteredBW);
+                } else if(avgMeanBW > 0) {
+                    bwRatio = (gdouble)relayMeanBW/avgMeanBW;
+                } else if(avgFilteredBW > 0) {
+                    bwRatio = (gdouble)relayFilteredBW/avgFilteredBW;
+                }
 
                 guint v3BW = (guint)(advertisedBW * bwRatio);
                 totalBW += v3BW;
@@ -337,8 +350,14 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
     struct timespec now_ts;
     clock_gettime(CLOCK_REALTIME, &now_ts);
 
-    FILE * fp;
-    fp = fopen(newFilename->str, "w");
+    FILE * fp = fopen(newFilename->str, "w");
+    if(fp == NULL) {
+        warning("unable to write v3bw file, NULL file stream for file path %s: error %i: %s",
+                newFilename->str, errno, g_strerror(errno));
+        g_string_free(newFilename, TRUE);
+        return;
+    }
+
     fprintf(fp, "%li\n", now_ts.tv_sec);
 
     //loop through nodes and cap bandwidths that are too large, then print to file

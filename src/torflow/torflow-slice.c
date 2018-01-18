@@ -45,9 +45,18 @@ static GQueue* _torflowslice_getCandidates(TorFlowSlice* slice, GHashTable* tabl
 }
 
 static guint _torflowslice_randomIndex(guint numElements) {
+    if(numElements <= 0) {
+        return 0;
+    }
+
+    /* get the random values */
     gint rInt = rand();
     gdouble rDouble = (gdouble)(((gdouble)rInt) / ((gdouble)RAND_MAX));
-    guint randomIndex = (guint)(rDouble * ((gdouble)(numElements-1)));
+
+    /* the range 0...1 counts for index 0, 1...2 counts for index 1, n...n+1 counts for n
+     * this leaves n=numElements as an outlier, which we need to adjust down. */
+    gdouble rIndex = rDouble * ((gdouble)(numElements));
+    guint randomIndex = (guint)(floor(rIndex));
     return randomIndex >= numElements ? (numElements-1) : randomIndex;
 }
 
@@ -162,13 +171,20 @@ gsize torflowslice_getTransferSize(TorFlowSlice* slice) {
 gboolean torflowslice_chooseRelayPair(TorFlowSlice* slice, gchar** entryRelayIdentity, gchar** exitRelayIdentity) {
     g_assert(slice);
 
+    /* return false if we have already measured all relays */
+    guint remaining = torflowslice_getNumProbesRemaining(slice);
+    if(remaining <= 0) {
+        return FALSE;
+    }
+
     /* choose an entry and exit among entries and exits with the lowest measurement counts */
     GQueue* candidateEntries = _torflowslice_getCandidates(slice, slice->entries);
     GQueue* candidateExits = _torflowslice_getCandidates(slice, slice->exits);
 
     /* make sure we have at least one entry and one exit */
     if(g_queue_is_empty(candidateEntries) && g_queue_is_empty(candidateExits)) {
-        warning("problem choosing relay pair: found %u candidates of %u entries and %u candidates of %u exits",
+        warning("slice %u: problem choosing relay pair: found %u candidates of %u entries and %u candidates of %u exits",
+                slice->sliceID,
                 g_queue_get_length(candidateEntries), g_hash_table_size(slice->entries),
                 g_queue_get_length(candidateExits), g_hash_table_size(slice->exits));
 
@@ -186,7 +202,7 @@ gboolean torflowslice_chooseRelayPair(TorFlowSlice* slice, gchar** entryRelayIde
     gchar* exitID = g_queue_peek_nth(candidateExits, exitPosition);
 
     if(entryID == NULL || exitID == NULL) {
-        error("we had candidate exits and entries, but found NULL ids: entry=%s exit=%s", entryID, exitID);
+        error("slice %u: we had candidate exits and entries, but found NULL ids: entry=%s exit=%s", slice->sliceID, entryID, exitID);
 
         g_queue_free(candidateEntries);
         g_queue_free(candidateExits);
@@ -212,9 +228,10 @@ gboolean torflowslice_chooseRelayPair(TorFlowSlice* slice, gchar** entryRelayIde
     g_hash_table_replace(slice->entries, entryID, GUINT_TO_POINTER(newEntryCount));
     g_hash_table_replace(slice->exits, exitID, GUINT_TO_POINTER(newExitCount));
 
-    info("choosing relay pair: found %u candidates of %u entries and %u candidates of %u exits, "
+    info("slice %u: choosing relay pair: found %u candidates of %u entries and %u candidates of %u exits, "
             "choosing entry %s at position %u and exit %s at position %u, "
             "new entry probe count is %u and exit probe count is %u",
+            slice->sliceID,
             g_queue_get_length(candidateEntries), g_hash_table_size(slice->entries),
             g_queue_get_length(candidateExits), g_hash_table_size(slice->exits),
             entryID, entryPosition, exitID, exitPosition, newEntryCount, newExitCount);
@@ -231,4 +248,15 @@ gboolean torflowslice_chooseRelayPair(TorFlowSlice* slice, gchar** entryRelayIde
         *exitRelayIdentity = exitID;
     }
     return TRUE;
+}
+
+void torflowslice_logStatus(TorFlowSlice* slice) {
+    g_assert(slice);
+
+    guint numEntries = g_hash_table_size(slice->entries);
+    guint numExits = g_hash_table_size(slice->exits);
+    guint remaining = torflowslice_getNumProbesRemaining(slice);
+
+    info("slice %u: we have %u entries and %u exits, and %u probes remaining",
+            slice->sliceID, numEntries, numExits, remaining);
 }

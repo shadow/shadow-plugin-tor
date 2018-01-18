@@ -79,10 +79,12 @@ static gint _torflowtorctlclient_parseBootstrapProgress(gchar* line) {
 
 static void _torflowtorctlclient_processDescriptorLine(TorFlowTorCtlClient* torctl, GString* linebuf) {
     /* handle descriptor info */
-    if(!torctl->descriptorLines && g_strstr_len(linebuf->str, linebuf->len, "250 OK")) {
+    if(!torctl->descriptorLines && g_strstr_len(linebuf->str, linebuf->len, "250+ns/all=")) {
         info("%s: 'GETINFO ns/all\\r\\n' command successful, descriptor response coming next", torctl->id);
         torctl->descriptorLines = g_queue_new();
-    } else if(torctl->descriptorLines) {
+    }
+
+    if(torctl->descriptorLines) {
         /* descriptors coming */
         if(g_strstr_len(linebuf->str, linebuf->len, "250+ns/all=")) {
             /* header */
