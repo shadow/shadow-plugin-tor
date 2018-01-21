@@ -18,12 +18,6 @@ extern const RAND_METHOD* RAND_get_rand_method();
 typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
 typedef unsigned long (*CRYPTO_id_func)(void);
 
-const char tor_git_revision[] =
-#ifndef _MSC_VER
-#include "micro-revision.i"
-#endif
-        "";
-
 static char* _shadowtor_get_formatted_arg_str(char* arg_str,
         const char* homedir_str, const char* hostname_str) {
     char* found = NULL;
