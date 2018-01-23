@@ -104,6 +104,12 @@ if(version_check_passed)
     add_definitions(-DSTARTUP_Q_PARAM)
     message(STATUS "Added definition STARTUP_Q_PARAM")
 endif()
+# version >= 0.3.3.1, commit 72b5e4a2db4282002fe50e11c2b8a79e108d30f8
+check_tor_version(version_check_passed 0 3 3 1)
+if(version_check_passed)
+    add_definitions(-DNO_GIT_REVISION)
+    message(STATUS "Added definition NO_GIT_REVISION")
+endif()
 
 # add any extra defines
 add_definitions(${CMAKE_EXTRA_DEFINES})

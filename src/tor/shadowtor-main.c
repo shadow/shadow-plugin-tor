@@ -18,11 +18,16 @@ extern const RAND_METHOD* RAND_get_rand_method();
 typedef void (*CRYPTO_lock_func)(int, int, const char*, int);
 typedef unsigned long (*CRYPTO_id_func)(void);
 
+/* only define this variable in older versions of Tor.
+ * it was moved to src/or/git_revision.c right before version 0.3.3.1
+ * in commit 72b5e4a2db4282002fe50e11c2b8a79e108d30f8*/
+#ifndef NO_GIT_REVISION
 const char tor_git_revision[] =
 #ifndef _MSC_VER
 #include "micro-revision.i"
 #endif
         "";
+#endif
 
 static char* _shadowtor_get_formatted_arg_str(char* arg_str,
         const char* homedir_str, const char* hostname_str) {
