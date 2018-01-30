@@ -276,9 +276,12 @@ void torflowdatabase_storeMeasurementResult(TorFlowDatabase* database,
     }
 }
 
-void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
+static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
     g_assert(database);
 
+    // we only use the most recent measurement of a relay, i.e., the numprobes
+    // measurements that were done as part of the most recent slice
+    // see https://gitweb.torproject.org/torflow.git/tree/NetworkScanners/BwAuthority/README.spec.txt#n285
     guint numProbesPerRelay = torflowconfig_getNumProbesPerRelay(database->config);
 
     // loop through measured nodes and aggregate stats
@@ -286,6 +289,13 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
     guint totalFilteredBW = 0;
     guint numMeasuredNodes = 0;
 
+    // we compute averages of the entire network so that we can compare each relay's bandwidth values
+    // to the rest of the network
+    // see https://gitweb.torproject.org/torflow.git/tree/NetworkScanners/BwAuthority/README.spec.txt#n298
+    //
+    // note that the actual torflow code may compute averages based on only relays in the same class as
+    // the target relay, rather than whole-network averages (classes: Guard, Exit, Middle, Guard+Exit)
+    // https://gitweb.torproject.org/torflow.git/tree/NetworkScanners/BwAuthority/aggregate.py#n491
     GHashTableIter iter;
     gpointer key;
     gpointer value;
@@ -306,9 +316,13 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
     gdouble avgMeanBW = 0.0f;
     gdouble avgFilteredBW = 0.0f;
     if(numMeasuredNodes > 0) {
-        avgMeanBW = (gdouble)totalMeanBW/(gdouble)numMeasuredNodes;
-        avgFilteredBW = (gdouble)totalFilteredBW/(gdouble)numMeasuredNodes;
+        avgMeanBW = ((gdouble)totalMeanBW)/((gdouble)numMeasuredNodes);
+        avgFilteredBW = ((gdouble)totalFilteredBW)/((gdouble)numMeasuredNodes);
     }
+
+    info("database found: numMeasuredNodes=%u, totalMeanBW=%u, avgMeanBW=%f, totalFilteredBW=%u, avgFilteredBW=%f",
+            numMeasuredNodes, totalMeanBW, avgMeanBW, totalFilteredBW, avgFilteredBW);
+
     guint totalBW = 0;
 
     // loop through nodes and calculate new bandwidths
@@ -324,23 +338,65 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
 
                 // use the better of the mean and filtered ratios, because that's what torflow does
                 gdouble bwRatio = 0.0f;
+                gboolean bwRatioIsSet = FALSE;
 
                 if(avgMeanBW > 0 && avgFilteredBW > 0) {
-                    bwRatio = fmax((gdouble)relayMeanBW/avgMeanBW, (gdouble)relayFilteredBW/avgFilteredBW);
+                    bwRatio = fmax(((gdouble)relayMeanBW)/avgMeanBW, ((gdouble)relayFilteredBW)/avgFilteredBW);
+                    bwRatioIsSet = TRUE;
                 } else if(avgMeanBW > 0) {
-                    bwRatio = (gdouble)relayMeanBW/avgMeanBW;
+                    bwRatio = ((gdouble)relayMeanBW)/avgMeanBW;
+                    bwRatioIsSet = TRUE;
                 } else if(avgFilteredBW > 0) {
-                    bwRatio = (gdouble)relayFilteredBW/avgFilteredBW;
+                    bwRatio = ((gdouble)relayFilteredBW)/avgFilteredBW;
+                    bwRatioIsSet = TRUE;
                 }
 
-                guint v3BW = (guint)(advertisedBW * bwRatio);
+                guint v3BW = (bwRatioIsSet && bwRatio >= 0.0f) ? (guint)(advertisedBW * bwRatio) : advertisedBW;
+
+                info("relay %s (%s) is measurable (fast and running), using %u as v3bw value (prev_bw=%u, ratioIsSet=%s, ratio=%f)",
+                        torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay), v3BW, advertisedBW,
+                        bwRatioIsSet ? "True" : "False", bwRatio);
+
                 totalBW += v3BW;
                 torflowrelay_setV3Bandwidth(relay, v3BW);
             } else {
+                info("relay %s (%s) is not measurable (not fast or not running), using 0 as v3bw value",
+                        torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay));
                 torflowrelay_setV3Bandwidth(relay, 0);
             }
         }
     }
+
+    // finally, loop through nodes and cap bandwidths that are too large
+    gdouble maxWeightFraction = torflowconfig_getMaxRelayWeightFraction(database->config);
+    guint maxBandwidth = (guint)(totalBW * maxWeightFraction);
+
+    g_hash_table_iter_init(&iter, database->relaysByIdentity);
+    while(g_hash_table_iter_next(&iter, &key, &value)) {
+        TorFlowRelay* relay = value;
+
+        guint v3bw = torflowrelay_getV3Bandwidth(relay);
+
+        if (v3bw > maxBandwidth){
+            const gchar* identity = torflowrelay_getIdentity(relay);
+            const gchar* nickname = torflowrelay_getNickname(relay);
+
+            message("Capping bandwidth from %u to %u for extremely fast relay %s (%s)\n",
+                    v3bw, maxBandwidth, nickname, identity);
+
+            v3bw = maxBandwidth;
+            torflowrelay_setV3Bandwidth(relay, v3bw);
+        }
+    }
+}
+
+void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
+    g_assert(database);
+
+    // first aggregate the latest results that we have
+    _torflowdatabase_aggregateResults(database);
+
+    message("writing new v3bw file now");
 
     //create new file to print to, and increment version
     const gchar* v3bwFilePath = torflowconfig_getV3BWFilePath(database->config);
@@ -360,11 +416,8 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
 
     fprintf(fp, "%li\n", now_ts.tv_sec);
 
-    //loop through nodes and cap bandwidths that are too large, then print to file
-    gdouble maxWeightFraction = torflowconfig_getMaxRelayWeightFraction(database->config);
-    guint maxBandwidth = (guint)(totalBW * maxWeightFraction);
-
     /*
+     * loop through all relays and print them to file
      * file format is, where first line value is unix timestamp:
      * ```
      * {}\n
@@ -373,7 +426,12 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
      * node_id=${}\tbw={}\tnick={}\n
      * ```
      * notice there is a newline on the last line.
+     *
+     * see https://gitweb.torproject.org/torflow.git/tree/NetworkScanners/BwAuthority/README.spec.txt#n332
      */
+    GHashTableIter iter;
+    gpointer key;
+    gpointer value;
     g_hash_table_iter_init(&iter, database->relaysByIdentity);
     while(g_hash_table_iter_next(&iter, &key, &value)) {
         TorFlowRelay* relay = value;
@@ -382,17 +440,12 @@ void torflowdatabase_writeBandwidthFile(TorFlowDatabase* database) {
         const gchar* nickname = torflowrelay_getNickname(relay);
         guint v3bw = torflowrelay_getV3Bandwidth(relay);
 
-        if (v3bw > maxBandwidth){
-            message("Capping bandwidth from %u to %u for extremely fast relay %s (%s)\n",
-                    v3bw, maxBandwidth, nickname, identity);
-            v3bw = maxBandwidth;
-            torflowrelay_setV3Bandwidth(relay, v3bw);
-        }
-
         fprintf(fp, "node_id=$%s\tbw=%u\tnick=%s\n", identity, v3bw, nickname);
     }
 
     fclose(fp);
+
+    message("wrote new bandwidth file at %s", v3bwFilePath);
 
     /* update symlink */
     _torflowdatabase_updateAuthoritativeLink(v3bwFilePath, newFilename->str);
