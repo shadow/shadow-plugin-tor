@@ -353,14 +353,14 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
 
                 guint v3BW = (bwRatioIsSet && bwRatio >= 0.0f) ? (guint)(advertisedBW * bwRatio) : advertisedBW;
 
-                info("relay %s (%s) is measurable (fast and running), using %u as v3bw value (prev_bw=%u, ratioIsSet=%s, ratio=%f)",
+                info("relay %s (%s) is measurable, using %u as v3bw value (prev_bw=%u, ratioIsSet=%s, ratio=%f)",
                         torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay), v3BW, advertisedBW,
                         bwRatioIsSet ? "True" : "False", bwRatio);
 
                 totalBW += v3BW;
                 torflowrelay_setV3Bandwidth(relay, v3BW);
             } else {
-                info("relay %s (%s) is not measurable (not fast or not running), using 0 as v3bw value",
+                info("relay %s (%s) is not measurable, using 0 as v3bw value",
                         torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay));
                 torflowrelay_setV3Bandwidth(relay, 0);
             }
@@ -370,6 +370,7 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
     // finally, loop through nodes and cap bandwidths that are too large
     gdouble maxWeightFraction = torflowconfig_getMaxRelayWeightFraction(database->config);
     guint maxBandwidth = (guint)(totalBW * maxWeightFraction);
+    guint minBandwidth = 20;
 
     g_hash_table_iter_init(&iter, database->relaysByIdentity);
     while(g_hash_table_iter_next(&iter, &key, &value)) {
@@ -377,12 +378,14 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
 
         guint v3bw = torflowrelay_getV3Bandwidth(relay);
 
-        if (v3bw > maxBandwidth){
+        if (v3bw < minBandwidth || v3bw > maxBandwidth) {
             const gchar* identity = torflowrelay_getIdentity(relay);
             const gchar* nickname = torflowrelay_getNickname(relay);
 
-            message("Capping bandwidth from %u to %u for extremely fast relay %s (%s)\n",
-                    v3bw, maxBandwidth, nickname, identity);
+            guint bandwidth = (v3bw < minBandwidth) ? minBandwidth : maxBandwidth;
+
+            message("Adjusting bandwidth from %u to %u for extremely %s relay %s (%s)\n",
+                    v3bw, bandwidth, (v3bw < minBandwidth) ? "slow" : "fast", nickname, identity);
 
             v3bw = maxBandwidth;
             torflowrelay_setV3Bandwidth(relay, v3bw);

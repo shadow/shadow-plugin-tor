@@ -73,7 +73,11 @@ void torflowrelay_free(TorFlowRelay* relay) {
 
 gboolean torflowrelay_isMeasureable(TorFlowRelay* relay) {
     g_assert(relay);
-    return (torflowrelay_getIsFast(relay) && torflowrelay_getIsRunning(relay)) ? TRUE : FALSE;
+    // we should try to measure all relays; Fast and Running flags are only used to compute
+    // the fraction of measured relays for logging purposes in the real torflow
+    // https://gitweb.torproject.org/torflow.git/tree/NetworkScanners/BwAuthority/aggregate.py#n810
+    //return torflowrelay_getIsRunning(relay) ? TRUE : FALSE;
+    return TRUE;
 }
 
 void torflowrelay_addMeasurement(TorFlowRelay* relay,
