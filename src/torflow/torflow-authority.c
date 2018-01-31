@@ -193,7 +193,7 @@ static void _torflowauthority_launchProbes(TorFlowAuthority* authority) {
     in_port_t socksPort = torflowconfig_getTorSocksPort(authority->config);
 
     while(g_hash_table_size(authority->probes) < numParallelProbes && !g_queue_is_empty(authority->slices)) {
-        TorFlowSlice* slice = g_queue_peek_head(authority->slices);
+        TorFlowSlice* slice = g_queue_pop_head(authority->slices);
 
         gchar* entryRelayIdentity = NULL;
         gchar* exitRelayIdentity = NULL;
@@ -224,10 +224,12 @@ static void _torflowauthority_launchProbes(TorFlowAuthority* authority) {
             } else {
                 warning("%s: error creating probe %u; ignoring", authority->id, probeID);
             }
+
+            /* we still need to probe relays in this slice */
+            g_queue_push_tail(authority->slices, slice);
         } else {
             /* no longer need to measure any more relays.
              * either they had no exits or entries, or we are done measuring all relays */
-            slice = g_queue_pop_head(authority->slices);
             torflowslice_free(slice);
         }
     }
