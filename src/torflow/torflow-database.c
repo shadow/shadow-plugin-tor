@@ -353,9 +353,9 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
 
                 guint v3BW = (bwRatioIsSet && bwRatio >= 0.0f) ? (guint)(advertisedBW * bwRatio) : advertisedBW;
 
-                info("relay %s (%s) is measurable, using %u as v3bw value (prev_bw=%u, ratioIsSet=%s, ratio=%f)",
-                        torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay), v3BW, advertisedBW,
-                        bwRatioIsSet ? "True" : "False", bwRatio);
+                info("Computing bandwidth for relay %s (%s), prev_bw=%u, ratioIsSet=%s, ratio=%f, v3bw=%u",
+                        torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay),
+                        advertisedBW, bwRatioIsSet ? "True" : "False", bwRatio, v3BW);
 
                 totalBW += v3BW;
                 torflowrelay_setV3Bandwidth(relay, v3BW);
@@ -387,7 +387,7 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
             message("Adjusting bandwidth from %u to %u for extremely %s relay %s (%s)\n",
                     v3bw, bandwidth, (v3bw < minBandwidth) ? "slow" : "fast", nickname, identity);
 
-            v3bw = maxBandwidth;
+            v3bw = bandwidth;
             torflowrelay_setV3Bandwidth(relay, v3bw);
         }
     }
