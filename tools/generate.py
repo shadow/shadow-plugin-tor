@@ -312,7 +312,7 @@ def generate(args):
     os.makedirs("torflowauthority")
     v3bwfile = open("torflowauthority/v3bw.init.consensus", "wb")
     os.symlink("v3bw.init.consensus", "torflowauthority/v3bw")
-    v3bwfile.write("1\n")
+    v3bwfile.write("946684801\n")
 
     guardnames, guardfps = [], []
     exitnames, exitfps = [], []
@@ -828,7 +828,7 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                     elif parts[0] == "opt" and parts[1] == "fingerprint":
                         fingerprint = "".join(parts[2:])
                     elif parts[0] == "fingerprint":
-                        fingerprint = "".join(parts[1:])                        
+                        fingerprint = "".join(parts[1:])
 
                 if ip not in ipmap: continue
 
