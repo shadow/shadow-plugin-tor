@@ -275,6 +275,7 @@ def generate(args):
 
     # build the XML
     root = etree.Element("shadow")
+    root.set("stoptime", "3600")
     root.set("preload", "~/.shadow/lib/libshadow-interpose.so")
     root.set("environment", "OPENSSL_ia32cap=~0x200000200000000;EVENT_NOSELECT=1;EVENT_NOPOLL=1;EVENT_NOKQUEUE=1;EVENT_NODEVPOLL=1;EVENT_NOEVPORT=1;EVENT_NOWIN32=1")
 
@@ -285,7 +286,7 @@ def generate(args):
         i += 1
         name = "server{0}".format(i)
         servernames.append(name)
-        e = etree.SubElement(root, "node")
+        e = etree.SubElement(root, "host")
         e.set("id", name)
         e.set("iphint", serverip)
         e.set("geocodehint", servercode)
@@ -294,7 +295,7 @@ def generate(args):
         e.set("bandwidthdown", "102400") # in KiB
         e.set("quantity", "1")
         e.set("cpufrequency", "10000000") # 10 GHz b/c we dont want bottlenecks
-        a = etree.SubElement(e, "application")
+        a = etree.SubElement(e, "process")
         a.set("plugin", "tgen")
         a.set("starttime", "1")
         a.set("arguments", "conf/tgen.server.graphml.xml")
@@ -593,17 +594,12 @@ def generate(args):
         e.set("path", "{0}share/topology.graphml.xml".format(INSTALLPREFIX))
         root.insert(0, e)
 
-        # kill time
-        e = etree.Element("kill")
-        e.set("time", "3600")
-        root.insert(0, e)
-
         # all our hosts
         print >>fhosts, (etree.tostring(root, pretty_print=True, xml_declaration=False))
 
 def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0, ip=None, code=None, torflowworkers=1): # bandwidth in KiB
     # node
-    e = etree.SubElement(root, "node")
+    e = etree.SubElement(root, "host")
     e.set("id", name)
     if ip is not None and ip != "127.0.0.1": e.set("iphint", ip)
     if code is not None: e.set("geocodehint", code)
@@ -659,17 +655,18 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
             a.set("starttime", "{0}".format(int(starttime)+60))
             a.set("arguments", "shadow.data/hosts/torflowauthority/v3bw 60 {0} 50 0.5 {1} {2} torflowauthority:{3}".format(torflowworkers, controlport, socksport, serverport))
         else:
-            a = etree.SubElement(e, "application")
+            a = etree.SubElement(e, "process")
             a.set("plugin", "tor")
             a.set("preload", "tor-preload")
             a.set("starttime", "{0}".format(int(starttime)))
             a.set("arguments", torargs)
-            a = etree.SubElement(e, "application")
-            a.set("plugin", "torctl")
-            a.set("starttime", "{0}".format(int(starttime)+1))
-            a.set("arguments", "localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY")
+            if 'relay' in name or '4uthority' in name:
+                a = etree.SubElement(e, "process")
+                a.set("plugin", "torctl")
+                a.set("starttime", "{0}".format(int(starttime)+1))
+                a.set("arguments", "localhost 9051 BW")
     if tgenargs is not None:
-        a = etree.SubElement(e, "application")
+        a = etree.SubElement(e, "process")
         a.set("plugin", "tgen")
         a.set("starttime", "{0}".format(int(starttime)+300))
         a.set("arguments", tgenargs)
@@ -983,7 +980,7 @@ ServerDNSTestAddresses {1}\n\
 ServerDNSAllowBrokenConfig 1\n\
 ServerDNSDetectHijacking 0\n\
 NumCPUs 1\n\
-Log info stdout\n\
+Log notice stdout\n\
 SafeLogging 0\n\
 WarnUnsafeSocks 0\n\
 ContactInfo shadow-support@cs.umn.edu\n\
