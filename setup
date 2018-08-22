@@ -248,7 +248,7 @@ def dependencies(args):
     os.chdir(dir)
 
     #configure = "./configure --prefix={0} --enable-shared=no CFLAGS=\"-fPIC -I{0} -g -pg\" LDFLAGS=\"-L{0}\" CPPFLAGS=\"-DUSE_DEBUG\"".format(args.prefix)
-    configure = "./configure --prefix={0} --enable-shared CFLAGS=\"-fPIC -I{0}\" LDFLAGS=\"-L{0}\"".format(args.prefix)
+    configure = "./configure --prefix={0} --enable-shared CFLAGS=\"-fPIC -I{0}/include/\" LDFLAGS=\"-L{0}/lib/\"".format(args.prefix)
 
     logging.info("now attempting to build libevent with '{0}'".format(configure))
     if automake(configure, "make", "make install") != 0:
