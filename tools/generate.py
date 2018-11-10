@@ -13,6 +13,9 @@ INSTALLPREFIX="~/.shadow/"
 # distribution of CPU frequencies, in KHz
 CPUFREQS=["2200000", "2400000", "2600000", "2800000", "3000000", "3200000", "3400000"]
 
+# onionperf locations as of 2018-11-10
+ONIONPERF_COUNTRY_CODES=['HK', 'US', 'NL']
+
 NRELAYS = 10
 NBRIDGES = 0
 NAUTHS = 1
@@ -526,7 +529,7 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf50kclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
 
         clientStartTime += secondsPerClient
         i += 1
@@ -538,7 +541,7 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf1mclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
 
         clientStartTime += secondsPerClient
         i += 1
@@ -550,7 +553,7 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf5mclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
 
         clientStartTime += secondsPerClient
         i += 1
