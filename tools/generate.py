@@ -699,9 +699,9 @@ def getClientCountryChoices(connectinguserspath):
             if dates_seen > 10:
                 break                            #if last 10 dates are analyzed, we're finished
 
-        if parts[2] != "??" and parts[2] != "":  #parts[2] == country
-            country = parts[2]
-            n = int(parts[7])                    #parts[7] == num of clients
+        if parts[1] != "??" and parts[1] != "":  #parts[1] == country
+            country = parts[1]
+            n = int(parts[2])                    #parts[2] == num of clients
             total += n
             if country not in counts: counts[country] = 0
             counts[country] += n
