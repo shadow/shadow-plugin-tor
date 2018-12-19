@@ -680,7 +680,7 @@ def getClientCountryChoices(connectinguserspath):
         lines = f.readlines()
 
     assert len(lines) > 11
-    header = lines[0].strip().split(',')
+    lines = lines[6:] # skip file comments and csv header
 
     total = 0
     counts = dict()
