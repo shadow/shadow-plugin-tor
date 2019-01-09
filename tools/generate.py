@@ -309,7 +309,7 @@ def generate(args):
     default_tor_args = "--Address ${NODEID} --Nickname ${NODEID} --DataDirectory shadow.data/hosts/${NODEID} --GeoIPFile "+INSTALLPREFIX+"share/geoip --defaults-torrc conf/tor.common.torrc"
 
     # tor directory authorities - choose the fastest relays (no authority is an exit node)
-    dirauths = [] # [name, v3ident, fingerprint] for torrc files
+    dirauths = [] # [name, ip_addr, v3ident, fingerprint] for torrc files
     os.makedirs("shadow.data.template/hosts")
     os.chdir("shadow.data.template/hosts")
 
@@ -331,13 +331,16 @@ def generate(args):
         auth.append(name)
         guardnames.append(name)
 
+        addr = "100.0.0.{0}".format(i)
+        auth.append(addr)
+
         # add to shadow hosts file
         #authority = guards_nodes.pop()
         #torargs = "{0} -f tor.authority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
         #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
         torargs = "{0} -f conf/tor.authority.torrc".format(default_tor_args)
-        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400)
+        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400, ip=addr)
 
         # generate keys for tor
         os.makedirs(name)
@@ -965,9 +968,9 @@ def write_torrc_files(args, dirauths, bridgeauths, bridges, guardids, exitids):
     if len(bridgeauths) > 0:
         dirauthkw = 'AlternateDirAuthority'
     for auth in dirauths:
-        auths_lines += "{3} {4} v3ident={0} orport=9111 {1}:9112 {2}\n".format(auth[1], auth[0], auth[2], dirauthkw, auth[0])
+        auths_lines += "{} {} v3ident={} orport=9111 {}:9112 {}\n".format(dirauthkw, auth[0], auth[2], auth[1], auth[3])
     for auth in bridgeauths:
-        auths_lines += "AlternateBridgeAuthority {4} orport=9111 bridge {1}:9112 {2}\n".format(None, auth[0], auth[2], None, auth[0])
+        auths_lines += "AlternateBridgeAuthority {} orport=9111 bridge {}:9112 {}\n".format(auth[0], auth[1], auth[3])
     bridges_lines = ""
     '''FIXME
     for bridge in bridges:

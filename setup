@@ -17,7 +17,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
 BUILD_PREFIX="./build"
 INSTALL_PREFIX=os.path.expanduser("~/.shadow")
 
-TOR_DEFAULT_VERSION="0.3.2.9"
+TOR_DEFAULT_VERSION="0.3.5.7"
 TOR_URL="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz".format(TOR_DEFAULT_VERSION)
 TOR_URL_SIG="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz.asc".format(TOR_DEFAULT_VERSION)
 
@@ -455,7 +455,7 @@ def setup_tor(args):
             if len(args.tor_libraries) > 0:
                 for l in args.tor_libraries: libs += " -l" + l.strip()
 
-            configure = "./configure --disable-transparent --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests {0} CFLAGS=\"{1}\" LDFLAGS=\"{2}\" LIBS=\"{3}\"".format(opts, cflags, ldflags, libs)
+            configure = "./configure --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests {0} CFLAGS=\"{1}\" LDFLAGS=\"{2}\" LIBS=\"{3}\"".format(opts, cflags, ldflags, libs)
 
             if args.libevent_prefix is not None: configure += " --with-libevent-dir=" + getfullpath(args.libevent_prefix)
             if args.openssl_prefix is not None: configure += " --with-openssl-dir=" + getfullpath(args.openssl_prefix)

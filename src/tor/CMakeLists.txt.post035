@@ -1,0 +1,172 @@
+## check for dependencies, using built-in cmake files to help us find the libs
+## these are in /usr/share/cmake/Modules/Findxxx.cmake
+find_package(ZLIB REQUIRED)
+
+## other libs dont have a Findxxx.cmake, so we check on our own (./cmake)
+find_package(RT REQUIRED)
+find_package(DL REQUIRED)
+find_package(M REQUIRED)
+find_package(OPENSSL REQUIRED)
+find_package(EVENT2 REQUIRED)
+find_package(GLIB REQUIRED)
+find_package(LibLZMA)
+
+include_directories(AFTER ${RT_INCLUDES} ${DL_INCLUDES} ${M_INCLUDES} ${GLIB_INCLUDES} ${EVENT2_INCLUDES} ${OPENSSL_INCLUDES} ${LIBLZMA_INCLUDE_DIRS} ${TOR_INCLUDES})
+
+## import shadow libs
+#INCLUDE(${CMAKE_INSTALL_PREFIX}/share/shadow/shadow-externals.cmake)
+
+## check env to see if we should allow interposition ion EVP_Cipher
+if(SHADOW_ENABLE_EVPCIPHER STREQUAL ON)
+    add_definitions(-DSHADOW_ENABLE_EVPCIPHER)
+    message(STATUS "Added definition SHADOW_ENABLE_EVPCIPHER")
+endif(SHADOW_ENABLE_EVPCIPHER STREQUAL ON)
+
+# defs for Tor
+add_definitions(-DSTARTUP_Q_PARAM)
+add_definitions(-DNO_GIT_REVISION)
+add_definitions(-DLOCALSTATEDIR="/usr/local/var" -DSHARE_DATADIR="/usr/local/var" -DBINDIR="/usr/local/bin")
+add_definitions(-DED25519_CUSTOMRANDOM -DED25519_SUFFIX=_donna)
+remove_definitions(-DNDEBUG)
+
+# add any extra defines
+add_definitions(${CMAKE_EXTRA_DEFINES})
+
+## disable warnings from tor code, add other options
+add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE -O")
+
+#--------------------------------------------------------------------------
+
+## start building
+get_filename_component(TOR_ROOT_DIR "${CMAKE_BINARY_DIR}/../tor" ABSOLUTE)
+
+## get all required tor source files
+include_directories(${TOR_ROOT_DIR})
+include_directories(${TOR_ROOT_DIR}/src)
+include_directories(${TOR_ROOT_DIR}/src/ext)
+set(all_src "")
+
+aux_src_subdirs(${TOR_ROOT_DIR}/src/app partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_src_subdirs(${TOR_ROOT_DIR}/src/core partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_src_subdirs(${TOR_ROOT_DIR}/src/feature partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_src_subdirs(${TOR_ROOT_DIR}/src/lib partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_source_directory(${TOR_ROOT_DIR}/src/ext partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/curve25519_donna partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/ref10 partial_src)
+list(APPEND all_src ${partial_src})
+
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/donna partial_src)
+list(APPEND all_src ${partial_src})
+
+include_directories(${TOR_ROOT_DIR}/src/trunnel)
+aux_source_directory(${TOR_ROOT_DIR}/src/trunnel partial_src)
+list(APPEND all_src ${partial_src})
+
+include_directories(${TOR_ROOT_DIR}/src/trunnel/hs)
+aux_source_directory(${TOR_ROOT_DIR}/src/trunnel/hs partial_src)
+list(APPEND all_src ${partial_src})
+
+include_directories(${TOR_ROOT_DIR}/src/ext/trunnel)
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel partial_src)
+list(APPEND all_src ${partial_src})
+
+# add tor tracing directory, if enabled
+if(TOR_TRACING STREQUAL ON)
+    include_directories(${TOR_ROOT_DIR}/src/lib/trace)
+    aux_source_directory(${TOR_ROOT_DIR}/src/lib/trace partial_src)
+    list(APPEND all_src ${partial_src})
+endif(TOR_TRACING STREQUAL ON)
+
+list(REMOVE_DUPLICATES all_src)
+
+# ignore the files that should not be inlcuded in the build
+list(REMOVE_ITEM all_src 
+    ${TOR_ROOT_DIR}/src/app/main/ntmain.c
+    ${TOR_ROOT_DIR}/src/app/main/tor_main.c
+    ${TOR_ROOT_DIR}/src/ext/getdelim.c
+    ${TOR_ROOT_DIR}/src/ext/OpenBSD_malloc_Linux.c
+    ${TOR_ROOT_DIR}/src/ext/strlcat.c
+    ${TOR_ROOT_DIR}/src/ext/strlcpy.c
+    ${TOR_ROOT_DIR}/src/ext/tinytest_demo.c
+    ${TOR_ROOT_DIR}/src/ext/tinytest.c
+    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/ed25519.c
+    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test.c
+    ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test-internals.c
+    ${TOR_ROOT_DIR}/src/lib/tls/nss_countbytes.c
+    ${TOR_ROOT_DIR}/src/lib/tls/tortls_nss.c
+    ${TOR_ROOT_DIR}/src/lib/tls/x509_nss.c
+    ${TOR_ROOT_DIR}/src/lib/crypt_ops/aes_nss.c
+    ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_dh_nss.c
+    ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_nss_mgt.c
+    ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_rsa_nss.c
+    ${TOR_ROOT_DIR}/src/lib/lock/compat_mutex_winthreads.c
+)
+
+if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+    list(REMOVE_ITEM all_src ${TOR_ROOT_DIR}/src/ext/curve25519_donna/curve25519-donna.c)
+else()
+    list(REMOVE_ITEM all_src ${TOR_ROOT_DIR}/src/ext/curve25519_donna/curve25519-donna-c64.c)
+endif()
+
+# force use of c compiler instead of cxx for keccak
+check_tor_version(version_check_passed 0 2 9 1)
+if(version_check_passed AND (EXISTS ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c))
+    # the following doesn't stick, i think because the src file is not in the current dir
+    #set(torkeccak ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    #set_source_file_properties(${torkeccak} PROPERTIES LANGUAGE C)
+
+    # work around the above problem by creating a target and setting the language on that
+    # the only reason this works is because there is no state in keccak 
+    # and so it doesnt need to be built with llvm
+    include_directories(${TOR_ROOT_DIR}/src/ext/keccak-tiny)
+    add_library(torkeccak STATIC ${TOR_ROOT_DIR}/src/ext/keccak-tiny/keccak-tiny-unrolled.c)
+    set_target_properties(torkeccak PROPERTIES LANGUAGE C)
+endif()
+
+foreach(src_file IN LISTS all_src)
+	MESSAGE(STATUS "Using Tor src file ${src_file}")
+endforeach()
+
+#--------------------------------------------------------------------------
+
+## create and install a shared library that can plug into shadow
+add_shadow_plugin(shadow-plugin-tor shadowtor-main.c ${all_src})
+
+if(TARGET torkeccak)
+    add_dependencies(shadow-plugin-tor torkeccak)
+endif()
+
+target_link_libraries(shadow-plugin-tor
+    ${TOR_LIBRARIES} ${GLIB_LIBRARIES} ${EVENT2_LIBRARIES} ${OPENSSL_LIBRARIES} 
+    ${LIBLZMA_LIBRARIES} ${ZLIB_LIBRARIES} ${M_LIBRARIES} ${RT_LIBRARIES} ${DL_LIBRARIES} -lpthread)
+
+if(TARGET torkeccak)
+    target_link_libraries(shadow-plugin-tor torkeccak)
+endif()
+
+foreach(lib ${CMAKE_TOR_LIBRARIES})
+    target_link_libraries(shadow-plugin-tor ${lib})
+    message(STATUS "Linked " ${lib} " to shadow-plugin-tor")
+endforeach(lib ${CMAKE_TOR_LIBRARIES})
+
+install(TARGETS shadow-plugin-tor DESTINATION lib)
+set_target_properties(shadow-plugin-tor PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+## preload library for intercepting functions
+add_library(shadow-preload-tor SHARED shadowtor-preload.c)
+install(TARGETS shadow-preload-tor DESTINATION lib)
+
+install(FILES ${TOR_ROOT_DIR}/src/config/geoip DESTINATION share/)
+#install(DIRECTORY resource/ DESTINATION share PATTERN "config/*")
