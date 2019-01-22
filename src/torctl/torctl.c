@@ -7,7 +7,7 @@
 #define MAGIC 0xFFEEDDCC
 
 /* if option is specified, run as client, else run as server */
-static const gchar* USAGE = "USAGE: torctl hostname port event1,event2,...,eventN\n";
+static const gchar* USAGE = "USAGE: torctl hostname port event1,event2,...,eventN || torctl hostname port COMMAND cmd arg1 arg2 ...\n";
 
 typedef enum _TorCTLState TorCTLState;
 enum _TorCTLState {
@@ -39,7 +39,8 @@ struct _TorCTL {
 
 	GQueue* commands;
 	GString* receiveLineBuffer;
-	GString* eventsCommand;
+	GString* asyncEventString;
+	GString* syncCommandString;
 
 	guint magic;
 };
@@ -122,7 +123,11 @@ static void _torctl_processLine(TorCTL* torctl, GString* linebuf) {
 					torctl->slogf(G_LOG_LEVEL_MESSAGE, __FUNCTION__,
 							"torctl ready (Bootstrapped 100)");
 
-					g_queue_push_tail(torctl->commands, g_string_new(torctl->eventsCommand->str));
+					if(torctl->asyncEventString) {
+                        g_queue_push_tail(torctl->commands, g_string_new(torctl->asyncEventString->str));
+					} else if(torctl->syncCommandString) {
+                        g_queue_push_tail(torctl->commands, g_string_new(torctl->syncCommandString->str));
+                    }
 
 					torctl->isStatusEventSet = FALSE;
 					torctl->state = TCS_LOGGING;
@@ -312,8 +317,8 @@ void torctl_free(TorCTL* torctl) {
 		g_string_free(torctl->hostname, TRUE);
 	}
 
-	if(torctl->eventsCommand) {
-		g_string_free(torctl->eventsCommand, TRUE);
+	if(torctl->asyncEventString) {
+		g_string_free(torctl->asyncEventString, TRUE);
 	}
 
 	while(!g_queue_is_empty(torctl->commands)) {
@@ -328,23 +333,45 @@ void torctl_free(TorCTL* torctl) {
 TorCTL* torctl_new(gint argc, gchar* argv[], TorctlLogFunc slogf) {
 	g_assert(slogf);
 
-	if(argc != 4) {
-		slogf(G_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
-		return NULL;
+	TorCTL* torctl;
+
+	if(!g_ascii_strcasecmp(argv[3], "COMMAND")) {
+        if(argc < 5) {
+            slogf(G_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
+            return NULL;
+        }
+
+        torctl = g_new0(TorCTL, 1);
+        torctl->magic = MAGIC;
+
+	    torctl->syncCommandString = g_string_new(NULL);
+	    int i = 0;
+	    for(i = 4; i < argc; i++) {
+	        if(i == argc-1) {
+                g_string_append_printf(torctl->syncCommandString, "%s\r\n", argv[i]);
+	        } else {
+	            g_string_append_printf(torctl->syncCommandString, "%s ", argv[i]);
+	        }
+	    }
+	} else {
+	    if(argc != 4) {
+	        slogf(G_LOG_LEVEL_WARNING, __FUNCTION__, USAGE);
+	        return NULL;
+	    }
+
+	    torctl = g_new0(TorCTL, 1);
+        torctl->magic = MAGIC;
+
+        gchar** eventStrs = g_strsplit(argv[3], ",", 0);
+        gchar* eventStr = g_strjoinv(" ", eventStrs);
+        torctl->asyncEventString = g_string_new(NULL);
+        g_string_printf(torctl->asyncEventString, "SETEVENTS %s\r\n", eventStr);
+        g_free(eventStr);
+        g_strfreev(eventStrs);
 	}
 
-	TorCTL* torctl = g_new0(TorCTL, 1);
-	torctl->magic = MAGIC;
-
-	torctl->hostname = g_string_new(argv[1]);
-	torctl->netport = (in_port_t) htons((in_port_t)atoi(argv[2]));
-
-	gchar** eventStrs = g_strsplit(argv[3], ",", 0);
-	gchar* eventStr = g_strjoinv(" ", eventStrs);
-	torctl->eventsCommand = g_string_new(NULL);
-	g_string_printf(torctl->eventsCommand, "SETEVENTS %s\r\n", eventStr);
-	g_free(eventStr);
-	g_strfreev(eventStrs);
+    torctl->hostname = g_string_new(argv[1]);
+    torctl->netport = (in_port_t) htons((in_port_t)atoi(argv[2]));
 
 	torctl->slogf = slogf;
 	torctl->commands = g_queue_new();
