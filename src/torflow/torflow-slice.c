@@ -11,6 +11,9 @@ struct _TorFlowSlice {
     guint numProbesPerRelay;
     guint totalProbesRemaining;
 
+    gchar* relayIDSearch;
+    gboolean relayIDFound;
+
     GHashTable* entries;
     GHashTable* exits;
 };
@@ -91,6 +94,11 @@ void torflowslice_free(TorFlowSlice* slice) {
 
     if(slice->exits) {
         g_hash_table_destroy(slice->exits);
+    }
+
+    if(slice->relayIDSearch) {
+        g_free(slice->relayIDSearch);
+        slice->relayIDSearch = NULL;
     }
 
     g_free(slice);
@@ -259,4 +267,48 @@ void torflowslice_logStatus(TorFlowSlice* slice) {
 
     info("slice %u: we have %u entries and %u exits, and %u probes remaining",
             slice->sliceID, numEntries, numExits, remaining);
+}
+
+static void _torflowslice_FindRelayID(gchar* key, gpointer value, TorFlowSlice* slice) {
+    if(key) {
+        if(!g_ascii_strcasecmp(key, slice->relayIDSearch)) {
+            slice->relayIDFound = TRUE;
+        }
+    }
+}
+
+gboolean torflowslice_contains(TorFlowSlice* slice, const gchar* relayID) {
+    g_assert(slice);
+
+    if(!relayID) {
+        return FALSE;
+    }
+
+    /* check if cache exists */
+    if(slice->relayIDSearch) {
+        /* cache exists, do we have a cache hit? */
+        if(!g_ascii_strcasecmp(relayID, slice->relayIDSearch)) {
+            /* cache hit, return cached result */
+            return slice->relayIDFound;
+        } else {
+            /* cache miss, we need to refresh cache */
+            g_free(slice->relayIDSearch);
+            slice->relayIDSearch = NULL;
+            slice->relayIDFound = FALSE;
+        }
+    }
+
+    g_assert(!slice->relayIDSearch);
+
+    /* do search and cache result */
+    slice->relayIDSearch = g_strdup(relayID);
+    slice->relayIDFound = FALSE;
+
+    g_hash_table_foreach(slice->entries, (GHFunc)_torflowslice_FindRelayID, slice);
+
+    if(!slice->relayIDFound) {
+        g_hash_table_foreach(slice->exits, (GHFunc)_torflowslice_FindRelayID, slice);
+    }
+
+    return slice->relayIDFound;
 }

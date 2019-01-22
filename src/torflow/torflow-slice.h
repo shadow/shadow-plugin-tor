@@ -23,4 +23,6 @@ guint torflowslice_getLength(TorFlowSlice* slice);
 guint torflowslice_getNumProbesRemaining(TorFlowSlice* slice);
 gsize torflowslice_getTransferSize(TorFlowSlice* slice);
 
+gboolean torflowslice_contains(TorFlowSlice* slice, const gchar* relayID);
+
 #endif /* SRC_TORFLOW_TORFLOW_SLICE_H_ */
