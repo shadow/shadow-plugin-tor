@@ -641,7 +641,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
 #                a = etree.SubElement(e, "application")
 #                a.set("plugin", "torctl")
 #                a.set("starttime", "{0}".format(int(starttime)+1))
-#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW".format(controlport))
             serverport, controlport, socksport = 8080, 9050, 9000
             a = etree.SubElement(e, "application")
             a.set("plugin", "filetransfer")
@@ -655,7 +655,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
             a = etree.SubElement(e, "application")
             a.set("plugin", "torctl")
             a.set("starttime", "{0}".format(int(starttime)+1))
-            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW".format(controlport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "torflow")
             a.set("starttime", "{0}".format(int(starttime)+60))
@@ -988,8 +988,9 @@ ServerDNSDetectHijacking 0\n\
 NumCPUs 1\n\
 Log notice stdout\n\
 SafeLogging 0\n\
+LogTimeGranularity 1\n\
 WarnUnsafeSocks 0\n\
-ContactInfo shadow-support@cs.umn.edu\n\
+ContactInfo https://github.com/shadow/shadow-plugin-tor/issues\n\
 DynamicDHGroups 0\n\
 DisableDebuggerAttachment 0\n\
 CellStatistics 1\n\
