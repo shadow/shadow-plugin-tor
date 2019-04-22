@@ -33,7 +33,7 @@ remove_definitions(-DNDEBUG)
 add_definitions(${CMAKE_EXTRA_DEFINES})
 
 ## disable warnings from tor code, add other options
-add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE -O")
+add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -fno-omit-frame-pointer -U_FORTIFY_SOURCE -ggdb -O0")
 
 #--------------------------------------------------------------------------
 

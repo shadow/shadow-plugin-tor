@@ -442,7 +442,7 @@ def setup_tor(args):
             cflags = "-fPIC -fno-inline"
             if args.extra_includes is not None:
                 for i in args.extra_includes: cflags += " -I" + i.strip()
-            if args.do_debug: cflags += " -g"
+            if args.do_debug: cflags += " -ggdb"
             if args.tor_config_cflags: cflags += " " + " ".join(args.tor_config_cflags)
             if args.extra_defines: 
                 for d in args.extra_defines: cflags += " -D" + d.strip()
