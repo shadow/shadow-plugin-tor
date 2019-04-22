@@ -9,7 +9,9 @@ find_package(M REQUIRED)
 include_directories(AFTER ${GLIB_INCLUDES} ${M_INCLUDES})
 
 ## plug-ins need to disable fortification to ensure syscalls are intercepted
-add_cflags("-fPIC -fno-inline -fno-strict-aliasing -std=gnu11 -U_FORTIFY_SOURCE")
+#already done in parent CMake file
+#add_cflags("-fPIC -fno-inline -fno-strict-aliasing -std=gnu11 -U_FORTIFY_SOURCE")
+add_cflags(-std=gnu11)
 
 ## Download smaller files than normal Torflow (improves running time)
 #add_definitions( -DSMALLFILES )

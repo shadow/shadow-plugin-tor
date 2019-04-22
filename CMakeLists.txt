@@ -18,19 +18,26 @@ macro(add_cflags)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ARGN}")
 endmacro(add_cflags)
 
+## configure the default build type
+if(NOT CMAKE_BUILD_TYPE)
+	set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 ## now handle the options, set up our own flags
 set(CMAKE_C_FLAGS_DEBUG "")
 set(CMAKE_C_FLAGS_RELEASE "")
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    message(STATUS "Release enabled. Setting '-DNDEBUG' and '-O3'.")
-    add_definitions(-DNDEBUG)
-    add_cflags(-O3)
+
+## build type specific options
+if(CMAKE_BUILD_TYPE MATCHES "Release")
+	add_cflags(-O2)
+	add_definitions(-DNDEBUG)
 else()
-    set(CMAKE_BUILD_TYPE "Debug")
-    message(STATUS "Debug enabled. Setting '-DDEBUG' and '-g'.")
-    add_definitions(-DDEBUG)
-    add_cflags(-g)
+	add_cflags(-O0)
+	add_definitions(-DDEBUG)
 endif()
+
+add_cflags(-ggdb)
+add_cflags(-fno-omit-frame-pointer)
 
 ## get general includes
 include(CheckIncludeFile)
@@ -83,12 +90,5 @@ message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
 include_directories(${CMAKE_MODULE_PATH})
 include_directories(${SHADOW_ROOT}/include)
 include(ShadowTools)
-
-## plug-ins need to disable fortification to ensure syscalls are intercepted
-#add_definitions(-D_GNU_SOURCE)
-add_cflags("-fno-inline -fno-strict-aliasing")
-
-## CFLAGS status update
-message(STATUS "CMAKE_C_FLAGS = ${CMAKE_C_FLAGS}")
 
 add_subdirectory(src)
