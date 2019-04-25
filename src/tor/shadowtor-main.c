@@ -11,6 +11,7 @@
 #include <glib.h>
 
 #include <openssl/crypto.h>
+#include <openssl/rand.h>
 
 extern int tor_main(int argc, char *argv[]);
 extern const RAND_METHOD* RAND_get_rand_method();
@@ -51,10 +52,10 @@ static char* _shadowtor_get_formatted_arg_str(char* arg_str,
     return g_string_free(sbuffer, FALSE);
 }
 
-static const char* _shadowtor_get_hostname_str() {
+static char* _shadowtor_get_hostname_str() {
     char hostname_buf[128];
     memset(hostname_buf, 0, 128);
-    if (gethostname(&hostname_buf, 127) < 0) {
+    if (gethostname(&hostname_buf[0], 127) < 0) {
         return NULL;
     }
     return strdup(hostname_buf);
@@ -73,7 +74,7 @@ static int _shadowtor_run(int argc, char *argv[]) {
 
     /* get some basic info about this node */
     const char* homedir_str = _shadowtor_get_homedir_str();
-    const char* hostname_str = _shadowtor_get_hostname_str();
+    char* hostname_str = _shadowtor_get_hostname_str();
 
     if (homedir_str && hostname_str) {
         /* convert special formatted arguments, like expanding '~' and '${NODEID}' */

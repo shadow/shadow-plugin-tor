@@ -11,6 +11,6 @@ add_cflags(-Wno-unknown-warning-option)
 
 message(STATUS "CMAKE_C_FLAGS = ${CMAKE_C_FLAGS}")
 
-#add_subdirectory(tor)
+add_subdirectory(tor)
 add_subdirectory(torctl)
-#add_subdirectory(torflow)
+add_subdirectory(torflow)

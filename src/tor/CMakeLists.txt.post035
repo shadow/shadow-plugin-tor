@@ -36,6 +36,7 @@ add_definitions(${CMAKE_EXTRA_DEFINES})
 # already done in parent CMake file
 #add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -fno-omit-frame-pointer -U_FORTIFY_SOURCE -ggdb -O3")
 add_cflags(-std=gnu99)
+add_cflags(-fPIC)
 
 #--------------------------------------------------------------------------
 

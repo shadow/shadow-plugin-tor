@@ -214,6 +214,7 @@ remove_definitions(-DNDEBUG)
 # already done in parent CMake file
 #add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOURCE -O")
 add_cflags(-std=gnu99)
+add_cflags(-fPIC)
 add_cflags(-w)
 
 ## create and install a shared library that can plug into shadow
