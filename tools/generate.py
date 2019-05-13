@@ -571,7 +571,7 @@ def generate(args):
 
         e = etree.Element("plugin")
         e.set("id", "tgen")
-        e.set("path", "{0}lib/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
+        e.set("path", "{0}bin.tgen".format(INSTALLPREFIX))
         root.insert(0, e)
 
         # TODO enable when torflow works
@@ -875,6 +875,7 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         if len(parts) < 6: continue # see if we can get other info from this doc
                         seconds = float(int(parts[3][1:]))
                         speeds = parts[5]
+                        if 'info' in speeds: continue
                         nbytes = speeds.split(',')
                         maxwrite = int(max([int(i) for i in nbytes]) / seconds)
                         totalwrite = int(float(sum([int(i) for i in nbytes])) / float(seconds*len(nbytes)))
@@ -882,6 +883,7 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         if len(parts) < 6: continue # see if we can get other info from this doc
                         seconds = float(int(parts[3][1:]))
                         speeds = parts[5]
+                        if 'info' in speeds: continue
                         nbytes = speeds.split(',')
                         maxread = int(max([int(i) for i in nbytes]) / seconds)
                         totalread = int(float(sum([int(i) for i in nbytes])) / float(seconds*len(nbytes)))
