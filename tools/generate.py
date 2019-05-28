@@ -571,7 +571,7 @@ def generate(args):
 
         e = etree.Element("plugin")
         e.set("id", "tgen")
-        e.set("path", "{0}bin.tgen".format(INSTALLPREFIX))
+        e.set("path", "{0}bin/tgen".format(INSTALLPREFIX))
         root.insert(0, e)
 
         # TODO enable when torflow works
