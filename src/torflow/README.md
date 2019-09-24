@@ -80,4 +80,20 @@ The following are optional arguments (default values exist):
  + `NumProbesPerRelay`:Integer (default=5) [Mode=TorFlow]  
     Number of times we need to measure each relay before a slice is done.
 
+## Example
+
+To run TorFlow in your ShadowTor network, add something like the following to an
+existing `shadow.config.xml` file.
+
+```
+<plugin id="torflow" path="~/.shadow/lib/libshadow-plugin-torflow.so"/>
+
+<host id="torflowauthority" bandwidthdown="12207" bandwidthup="12207" geocodehint="US">
+  <process plugin="tor" preload="tor-preload" starttime="1700" arguments="--Address ${NODEID} --Nickname ${NODEID} --DataDirectory shadow.data/hosts/${NODEID} --GeoIPFile ~/.shadow/share/geoip --defaults-torrc conf/tor.common.torrc -f conf/tor.client.torrc"/>
+  <process plugin="torctl" starttime="1701" arguments="localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW"/>
+  <process plugin="torflow" starttime="1800" arguments="Mode=TorFlow LogLevel=info ListenPort=18080 TorSocksPort=9000 TorControlPort=9051 FileServerInfo=torflowauthority:18080 V3BWFilePath=shadow.data/hosts/torflowauthority/v3bw ScanIntervalSeconds=0 NumParallelProbes=4 NumRelaysPerSlice=10 MaxRelayWeightFraction=0.25 ProbeTimeoutSeconds=300 NumProbesPerRelay=3"/>
+</host>
+```
+
+You may need to modify the above example depending on your simulation setup.
 
