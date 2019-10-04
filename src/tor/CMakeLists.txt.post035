@@ -114,6 +114,7 @@ list(REMOVE_ITEM all_src
     ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_dh_nss.c
     ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_nss_mgt.c
     ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_rsa_nss.c
+    ${TOR_ROOT_DIR}/src/lib/crypt_ops/crypto_digest_nss.c
     ${TOR_ROOT_DIR}/src/lib/lock/compat_mutex_winthreads.c
 )
 
