@@ -306,7 +306,7 @@ def generate(args):
 
     with open("conf/shadowresolv.conf", "wb") as f: print >>f, "nameserver 127.0.0.1"
 
-    default_tor_args = "--Address ${NODEID} --Nickname ${NODEID} --DataDirectory shadow.data/hosts/${NODEID} --GeoIPFile "+INSTALLPREFIX+"share/geoip --defaults-torrc conf/tor.common.torrc"
+    default_tor_args = "--Address ${NODEID} --Nickname ${NODEID} --DataDirectory shadow.data/hosts/${NODEID} --defaults-torrc conf/tor.common.torrc"
 
     # tor directory authorities - choose the fastest relays (no authority is an exit node)
     dirauths = [] # [name, ip_addr, v3ident, fingerprint] for torrc files
@@ -993,6 +993,7 @@ SafeLogging 0\n\
 LogTimeGranularity 1\n\
 WarnUnsafeSocks 0\n\
 ContactInfo https://github.com/shadow/shadow-plugin-tor/issues\n\
+GeoIPFile {2}\n\
 DynamicDHGroups 0\n\
 DisableDebuggerAttachment 0\n\
 CellStatistics 1\n\
@@ -1003,7 +1004,7 @@ ExtraInfoStatistics 1\n\
 CircuitPriorityHalflife 30\n\
 PathBiasUseThreshold 10000\n\
 PathBiasCircThreshold 10000\n\
-ControlPort 9051\n'.format(auths_lines, auth_name_csv)
+ControlPort 9051\n'.format(auths_lines, auth_name_csv, args.geoippath)
     clients = \
 'ORPort 0\n\
 DirPort 0\n\
