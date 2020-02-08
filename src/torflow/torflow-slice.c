@@ -43,7 +43,7 @@ static GQueue* _torflowslice_getCandidates(TorFlowSlice* slice, GHashTable* tabl
     while(g_hash_table_iter_next(&iter, &key, &value)) {
         /* the val is the number of probes, the key is the gchar* relay identity */
         guint numProbes = GPOINTER_TO_UINT(value);
-        if(numProbes <= minProbes) {
+        if(numProbes == minProbes) {
             g_queue_push_tail(candidates, key);
         }
     }
