@@ -20,17 +20,18 @@ struct _TorFlowSlice {
 
 static void _torflowslice_computeMinProbes(gchar* key, gpointer value, guint* minProbes) {
     guint probes = GPOINTER_TO_UINT(value);
-    if(*minProbes < probes) {
-        *minProbes = probes;
-    }
+    *minProbes = MIN(*minProbes, probes);
 }
 
 static GQueue* _torflowslice_getCandidates(TorFlowSlice* slice, GHashTable* table) {
     g_assert(slice);
     g_assert(table);
 
+    /* the strategy here is to choose among the relay that have been measured the least
+       number of times when selecting for the next measurement. */
+
     /* first get the minimum number of probes that we have for any relay */
-    guint minProbes = 0;
+    guint minProbes = G_MAXUINT;
     g_hash_table_foreach(table, (GHFunc)_torflowslice_computeMinProbes, &minProbes);
 
     /* now collect all relays that have the same minimum value */
@@ -40,8 +41,11 @@ static GQueue* _torflowslice_getCandidates(TorFlowSlice* slice, GHashTable* tabl
     gpointer key, value;
     g_hash_table_iter_init(&iter, table);
     while(g_hash_table_iter_next(&iter, &key, &value)) {
-        /* the key is the gchar* relay identity */
-        g_queue_push_tail(candidates, key);
+        /* the val is the number of probes, the key is the gchar* relay identity */
+        guint numProbes = GPOINTER_TO_UINT(value);
+        if(numProbes == minProbes) {
+            g_queue_push_tail(candidates, key);
+        }
     }
 
     return candidates;
