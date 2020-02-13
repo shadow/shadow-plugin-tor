@@ -129,7 +129,7 @@ static void _torfloweventmanager_processEvent(TorFlowEventManager* manager, gint
     debug("started processing event %s for descriptor %i",
             (event == TORFLOW_EV_READ) ? "READ" :
             (event == TORFLOW_EV_WRITE) ? "WRITE" :
-            (event == TORFLOW_EV_READ|TORFLOW_EV_WRITE) ? "READ|WRITE" :
+            (event == (TORFLOW_EV_READ|TORFLOW_EV_WRITE)) ? "READ|WRITE" :
             "NONE", descriptor);
 
     TorFlowWatch* watch = g_hash_table_lookup(manager->watches, &descriptor);
@@ -138,7 +138,7 @@ static void _torfloweventmanager_processEvent(TorFlowEventManager* manager, gint
         warning("missing watch object to handle event %s for descriptor %i",
                     (event == TORFLOW_EV_READ) ? "READ" :
                     (event == TORFLOW_EV_WRITE) ? "WRITE" :
-                    (event == TORFLOW_EV_READ|TORFLOW_EV_WRITE) ? "READ|WRITE" :
+                    (event == (TORFLOW_EV_READ|TORFLOW_EV_WRITE)) ? "READ|WRITE" :
                     "NONE", descriptor);
         return;
     }
@@ -152,7 +152,7 @@ static void _torfloweventmanager_processEvent(TorFlowEventManager* manager, gint
     debug("finished processing event %s for descriptor %i",
                 (event == TORFLOW_EV_READ) ? "READ" :
                 (event == TORFLOW_EV_WRITE) ? "WRITE" :
-                (event == TORFLOW_EV_READ|TORFLOW_EV_WRITE) ? "READ|WRITE" :
+                (event == (TORFLOW_EV_READ|TORFLOW_EV_WRITE)) ? "READ|WRITE" :
                 "NONE", descriptor);
 }
 
