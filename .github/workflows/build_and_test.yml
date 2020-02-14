@@ -22,6 +22,13 @@ jobs:
 #${{ matrix.cc }} \
     
     steps:
+      - name: Checkout Shadow
+        uses: actions/checkout@v2
+        with:
+          repository: shadow/shadow
+          ref: v1.13.2
+          path: shadow
+
       - name: Install shadow build deps
         run: >
           sudo apt-get install -y
@@ -38,18 +45,40 @@ jobs:
           libc-dbg
           python-pyelftools
 
-      - name: Checkout Shadow
-        uses: actions/checkout@v2
-        with:
-          repository: shadow/shadow
-          ref: v1.13.2
-          path: shadow
-
       - name: Install Shadow
         working-directory: ./shadow
         run: |
           ./setup build
           ./setup install
+
+      - name: Checkout tgen 
+        uses: actions/checkout@v2
+        with:
+          repository: shadow/tgen
+          ref: v0.0.1
+          path: tgen
+
+      - name: Install tgen build deps
+        run: >
+          sudo apt-get install -y
+          cmake
+          libglib2.0
+          libglib2.0-dev
+          libigraph0-dev
+          libigraph0v5
+
+      - name: Install tgen
+        working-directory: ./tgen
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/.shadow
+          make install
+
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: shadow-plugin-tor
 
       - name: Install shadow-plugin-tor build deps
         run: >
@@ -60,11 +89,6 @@ jobs:
           liblzma5
           liblzma-dev
           zlib1g-dev
-
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          path: shadow-plugin-tor
 
       - name: Build
         working-directory: ./shadow-plugin-tor
