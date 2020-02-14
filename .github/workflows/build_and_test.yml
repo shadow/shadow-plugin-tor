@@ -25,6 +25,8 @@ jobs:
 #${{ matrix.cc }} \
     
     steps:
+      - run: echo ${PATH}  # temp
+
       - name: Install shadow build deps
         run: >
           sudo apt-get install -y
@@ -79,7 +81,6 @@ jobs:
       - name: Simulate
         working-directory: ./shadow-plugin-tor/resource
         run: |
-          echo ${PATH}  # temp
           tar xaf shadowtor-minimal-config.tar.xz
           mv shadowtor-minimal-config shadowtor-minimal
           cd shadowtor-minimal
