@@ -23,14 +23,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Install dependencies
-        run: sudo apt install -y ${{ matrix.cc }} g++ cmake make xz-utils python libglib2.0-0 libglib2.0-dev libigraph0v5 libigraph0-dev libc-dbg python-pyelftools
+      - name: Apt
+        run: sudo apt-get install -y \
+            ${{ matrix.cc }} \
+            autoconf \
+            automake \
+            cmake \
+            g++ \
+            libc-dbg \
+            libglib2.0-0 \
+            libglib2.0-dev \
+            libigraph0-dev \
+            libigraph0v5 \
+            liblzma5 \
+            liblzma-dev \
+            make \
+            python \
+            python-pyelftools \
+            xz-utils \
+            zlib1g-dev \
+
+      - name: Dependencies
+        run: ./setup dependencies
 
       - name: Build
-        run: CC=${{ matrix.cc }} python setup build --clean --test
+        run: ./setup build
 
       - name: Install
-        run: python setup install
-
-      - name: Test
-        run: python setup test
+        run: ./setup install
