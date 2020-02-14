@@ -43,6 +43,7 @@ jobs:
             make
             python
             python-pyelftools
+            rtkit
             xz-utils
             zlib1g-dev
 
