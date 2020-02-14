@@ -19,13 +19,15 @@ jobs:
 #    strategy:
 #      matrix:
 #        cc: ['gcc', 'clang']
+#${{ matrix.cc }} \
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v2
 
       - name: Apt
-        run: sudo apt install -y \
-            ${{ matrix.cc }} \
+        run: sudo apt-get install -y \
+            gcc \ 
             autoconf \
             automake \
             cmake \
@@ -41,7 +43,7 @@ jobs:
             python \
             python-pyelftools \
             xz-utils \
-            zlib1g-dev \
+            zlib1g-dev
 
       - name: Dependencies
         run: ./setup dependencies
