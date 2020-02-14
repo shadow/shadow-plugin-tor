@@ -16,10 +16,12 @@ on:
 jobs:
   testing:
     runs-on: ubuntu-latest
-#    strategy:
-#      matrix:
-#        cc: ['gcc', 'clang']
-#${{ matrix.cc }} \
+    strategy:
+      matrix:
+        cc: ['gcc', 'clang']
+
+    env:
+      CC: ${{ matrix.cc }}
     
     steps:
       - name: Checkout Shadow
@@ -29,11 +31,17 @@ jobs:
           ref: v1.13.2
           path: shadow
 
+      - name: Install compiler
+        run: |
+          case "${CC}" in
+            gcc)   sudo apt-get install -y gcc g++ ;;
+            clang) sudo apt-get install -y clang ;;
+            *) echo "bad cc=${CC}" && exit 1 ;;
+          esac
+
       - name: Install shadow build deps
         run: >
           sudo apt-get install -y
-          gcc
-          g++
           cmake
           make
           xz-utils
@@ -85,7 +93,6 @@ jobs:
           sudo apt-get install -y
           autoconf
           automake
-          gcc
           liblzma5
           liblzma-dev
           zlib1g-dev
