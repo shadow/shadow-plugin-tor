@@ -25,9 +25,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Apt update
-        run: sudo apt-get update
-
       - name: Apt install
         run: >
             sudo apt-get install -y
