@@ -47,10 +47,10 @@ jobs:
             zlib1g-dev
 
       - name: Dependencies
-        run: ./setup dependencies
+        run: ./setup dependencies -y
 
       - name: Build
-        run: ./setup build
+        run: ./setup build -y
 
       - name: Install
         run: ./setup install
