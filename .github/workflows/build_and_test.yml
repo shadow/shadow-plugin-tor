@@ -13,9 +13,6 @@ on:
       - '**.md'
       - 'LICENSE'
 
-env:
-  PATH: $PATH:$HOME/.shadow/bin
-
 jobs:
   testing:
     runs-on: ubuntu-latest
@@ -25,8 +22,6 @@ jobs:
 #${{ matrix.cc }} \
     
     steps:
-      - run: echo ${PATH}  # temp
-
       - name: Install shadow build deps
         run: >
           sudo apt-get install -y
@@ -84,7 +79,7 @@ jobs:
           tar xaf shadowtor-minimal-config.tar.xz
           mv shadowtor-minimal-config shadowtor-minimal
           cd shadowtor-minimal
-          shadow shadow.config.xml > shadow.log
+          $HOME/.shadow/bin/shadow shadow.config.xml > shadow.log
           COMPLETE=`find shadow.data/hosts -name '*client*.log' -exec grep transfer-complete \{\} \; | wc -l`
           if [ $COMPLETE -ne 40 ]; then echo Expected 40 transfers got $COMPLETE; exit 1; fi
 
