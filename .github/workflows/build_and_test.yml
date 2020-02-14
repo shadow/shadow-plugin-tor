@@ -22,36 +22,52 @@ jobs:
 #${{ matrix.cc }} \
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Apt install
+      - name: Install shadow build deps
         run: >
             sudo apt-get install -y
             gcc
-            autoconf
-            automake
-            cmake
             g++
-            libc-dbg
+            cmake
+            make
+            xz-utils
+            python
             libglib2.0-0
             libglib2.0-dev
-            libigraph0-dev
             libigraph0v5
+            libigraph0-dev
+            libc-dbg
+            python-pyelftools
+
+      - name: Checkout Shadow
+        uses: actions/checkout@v2
+        with:
+            repository: shadow/shadow
+            ref: v1.13.2
+            path: shadow
+
+      - name: Install Shadow
+        run: cd shadow && ./setup build && ./setup install
+
+      - name: Install shadow-plugin-tor build deps
+        run: >
+            sudo apt-get install -y
+            autoconf
+            automake
+            gcc
             liblzma5
             liblzma-dev
-            make
-            python
-            python-pyelftools
-            rtkit
-            xz-utils
             zlib1g-dev
 
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+            path: shadow-plugin-tor
+
       - name: Dependencies
-        run: ./setup dependencies -y
+        run: cd shadow-plugin-tor && ./setup dependencies -y
 
       - name: Build
-        run: ./setup build -y
+        run: cd shadow-plugin-tor && ./setup build -y
 
       - name: Install
-        run: ./setup install
+        run: cd shadow-plugin-tor && ./setup install
