@@ -29,23 +29,24 @@ jobs:
         run: sudo apt-get update
 
       - name: Apt install
-        run: sudo apt-get install -y \
-            gcc \ 
-            autoconf \
-            automake \
-            cmake \
-            g++ \
-            libc-dbg \
-            libglib2.0-0 \
-            libglib2.0-dev \
-            libigraph0-dev \
-            libigraph0v5 \
-            liblzma5 \
-            liblzma-dev \
-            make \
-            python \
-            python-pyelftools \
-            xz-utils \
+        run: >
+            sudo apt-get install -y
+            gcc
+            autoconf
+            automake
+            cmake
+            g++
+            libc-dbg
+            libglib2.0-0
+            libglib2.0-dev
+            libigraph0-dev
+            libigraph0v5
+            liblzma5
+            liblzma-dev
+            make
+            python
+            python-pyelftools
+            xz-utils
             zlib1g-dev
 
       - name: Dependencies
