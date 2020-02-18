@@ -1,0 +1,117 @@
+# Syntax reference:
+# https://help.github.com/en/actions/automating-your-workflow-with-github-actions/workflow-syntax-for-github-actions
+
+name: Tests
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+
+jobs:
+  testing:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # TODO: add clang. Currently builds but has unsuccessful xfers in simulation.
+        cc: ['gcc']
+
+    env:
+      CC: ${{ matrix.cc }}
+    
+    steps:
+      - name: Checkout Shadow
+        uses: actions/checkout@v2
+        with:
+          repository: shadow/shadow
+          ref: v1.13.2
+          path: shadow
+
+      - name: Install compiler
+        run: |
+          case "${CC}" in
+            gcc)   sudo apt-get install -y gcc g++ ;;
+            clang) sudo apt-get install -y clang ;;
+            *) echo "bad cc=${CC}" && exit 1 ;;
+          esac
+
+      - name: Install shadow build deps
+        run: >
+          sudo apt-get install -y
+          cmake
+          make
+          xz-utils
+          python
+          libglib2.0-0
+          libglib2.0-dev
+          libigraph0v5
+          libigraph0-dev
+          libc-dbg
+          python-pyelftools
+
+      - name: Install Shadow
+        working-directory: ./shadow
+        run: |
+          ./setup build
+          ./setup install
+
+      - name: Checkout tgen 
+        uses: actions/checkout@v2
+        with:
+          repository: shadow/tgen
+          ref: v0.0.1
+          path: tgen
+
+      - name: Install tgen build deps
+        run: >
+          sudo apt-get install -y
+          cmake
+          libglib2.0
+          libglib2.0-dev
+          libigraph0-dev
+          libigraph0v5
+
+      - name: Install tgen
+        working-directory: ./tgen
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/.shadow
+          make install
+
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: shadow-plugin-tor
+
+      - name: Install shadow-plugin-tor build deps
+        run: >
+          sudo apt-get install -y
+          autoconf
+          automake
+          liblzma5
+          liblzma-dev
+          zlib1g-dev
+
+      - name: Build
+        working-directory: ./shadow-plugin-tor
+        run: |
+          ./setup dependencies -y
+          ./setup build -y
+          ./setup install
+
+      - name: Simulate
+        working-directory: ./shadow-plugin-tor/resource
+        run: |
+          tar xaf shadowtor-minimal-config.tar.xz
+          mv shadowtor-minimal-config shadowtor-minimal
+          cd shadowtor-minimal
+          $HOME/.shadow/bin/shadow shadow.config.xml > shadow.log
+          COMPLETE=`find shadow.data/hosts -name '*client*.log' -exec grep transfer-complete \{\} \; | wc -l`
+          if [ $COMPLETE -ne 40 ]; then echo Expected 40 transfers got $COMPLETE; exit 1; fi
+
