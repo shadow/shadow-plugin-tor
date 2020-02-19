@@ -32,34 +32,6 @@ jobs:
           ref: v1.13.2
           path: shadow
 
-      - name: Install compiler
-        run: |
-          case "${CC}" in
-            gcc)   sudo apt-get install -y gcc g++ ;;
-            clang) sudo apt-get install -y clang ;;
-            *) echo "bad cc=${CC}" && exit 1 ;;
-          esac
-
-      - name: Install shadow build deps
-        run: >
-          sudo apt-get install -y
-          cmake
-          make
-          xz-utils
-          python
-          libglib2.0-0
-          libglib2.0-dev
-          libigraph0v5
-          libigraph0-dev
-          libc-dbg
-          python-pyelftools
-
-      - name: Install Shadow
-        working-directory: ./shadow
-        run: |
-          ./setup build
-          ./setup install
-
       - name: Checkout tgen 
         uses: actions/checkout@v2
         with:
@@ -67,51 +39,18 @@ jobs:
           ref: v0.0.1
           path: tgen
 
-      - name: Install tgen build deps
-        run: >
-          sudo apt-get install -y
-          cmake
-          libglib2.0
-          libglib2.0-dev
-          libigraph0-dev
-          libigraph0v5
-
-      - name: Install tgen
-        working-directory: ./tgen
-        run: |
-          mkdir build
-          cd build
-          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/.shadow
-          make install
-
       - name: Checkout
         uses: actions/checkout@v2
         with:
           path: shadow-plugin-tor
 
-      - name: Install shadow-plugin-tor build deps
-        run: >
-          sudo apt-get install -y
-          autoconf
-          automake
-          liblzma5
-          liblzma-dev
-          zlib1g-dev
+      - name: CI script
+        run: shadow-plugin-tor/tools/continuous_integration_test.sh
 
-      - name: Build
-        working-directory: ./shadow-plugin-tor
-        run: |
-          ./setup dependencies -y
-          ./setup build -y
-          ./setup install
-
-      - name: Simulate
-        working-directory: ./shadow-plugin-tor/resource
-        run: |
-          tar xaf shadowtor-minimal-config.tar.xz
-          mv shadowtor-minimal-config shadowtor-minimal
-          cd shadowtor-minimal
-          $HOME/.shadow/bin/shadow shadow.config.xml > shadow.log
-          COMPLETE=`find shadow.data/hosts -name '*client*.log' -exec grep transfer-complete \{\} \; | wc -l`
-          if [ $COMPLETE -ne 40 ]; then echo Expected 40 transfers got $COMPLETE; exit 1; fi
+      - name: Upload simulation logs
+        uses: actions/upload-artifact@v1
+        if: failure()
+        with:
+          name: simulation-output
+          path: simulation
 
