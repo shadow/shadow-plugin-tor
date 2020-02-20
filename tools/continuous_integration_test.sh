@@ -14,8 +14,13 @@
 
 set -euo pipefail
 
+TRACE_CMD='echo \
+&& echo "********************************" \
+&& echo $FUNCNAME $@ \
+&& echo "********************************"'
+
 install_compiler () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     case "$1" in
       gcc)   sudo apt-get install -y gcc g++ ;;
       clang) sudo apt-get install -y clang ;;
@@ -24,7 +29,7 @@ install_compiler () (
 )
 
 install_shadow_build_deps () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     sudo apt-get install -y \
         cmake \
         make \
@@ -39,14 +44,14 @@ install_shadow_build_deps () (
 )
 
 install_shadow () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     cd $1
     ./setup build
     ./setup install
 )
 
 install_tgen_build_deps () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     sudo apt-get install -y \
         cmake \
         libglib2.0 \
@@ -56,7 +61,7 @@ install_tgen_build_deps () (
 )
 
 install_tgen () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     cd $1
     mkdir -p build
     cd build
@@ -65,7 +70,7 @@ install_tgen () (
 )
 
 install_shadow_plugin_tor_build_deps () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     sudo apt-get install -y \
         autoconf \
         automake \
@@ -75,7 +80,7 @@ install_shadow_plugin_tor_build_deps () (
 )
 
 install_shadow_plugin_tor () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     cd $1
     ./setup dependencies -y
     ./setup build -y
@@ -83,7 +88,7 @@ install_shadow_plugin_tor () (
 )
 
 run_simulation () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     SIMULATION_DIR=$1
     SHADOW_PLUGIN_TOR_SRC=$2
     SHADOW_BIN=$3
@@ -98,7 +103,7 @@ run_simulation () (
 )
 
 validate_simulation () (
-    echo $FUNCNAME $@
+    eval "$TRACE_CMD"
     SIMULATION_DIR=$1
 
     COMPLETE=`find $SIMULATION_DIR/shadowtor-minimal/shadow.data/hosts -name '*client*.log' -exec grep transfer-complete \{\} \; | wc -l`
