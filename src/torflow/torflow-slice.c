@@ -117,7 +117,7 @@ void torflowslice_addRelay(TorFlowSlice* slice, TorFlowRelay* relay) {
 
     if(torflowrelay_getIsExit(relay)) {
         g_hash_table_replace(slice->exits, relayID, GUINT_TO_POINTER(numProbes));
-    } else {
+    } else if (torflowrelay_getIsAuth(relay)){
         g_hash_table_replace(slice->entries, relayID, GUINT_TO_POINTER(numProbes));
     }
 }
@@ -131,7 +131,7 @@ guint torflowslice_getNumProbesRemaining(TorFlowSlice* slice) {
     g_assert(slice);
 
     slice->totalProbesRemaining = 0;
-    g_hash_table_foreach(slice->entries, (GHFunc)_torflowslice_countProbesRemaining, slice);
+    //g_hash_table_foreach(slice->entries, (GHFunc)_torflowslice_countProbesRemaining, slice);
     g_hash_table_foreach(slice->exits, (GHFunc)_torflowslice_countProbesRemaining, slice);
 
     return slice->totalProbesRemaining;
@@ -159,7 +159,7 @@ gsize torflowslice_getTransferSize(TorFlowSlice* slice) {
     /* This is based not on the spec, but on the file read by TorFlow,
      * NetworkScanners/BwAuthority/data/bwfiles. */
     if (slice->percentile < 0.01) {
-        transferSize = 4*1024*1024; /* 4 MiB */
+        transferSize = 1024*1024*1024; /* 1 GiB*/
     } else if (slice->percentile < 0.07) {
         transferSize = 2*1024*1024; /* 2 MiB */
     } else if (slice->percentile < 0.23) {

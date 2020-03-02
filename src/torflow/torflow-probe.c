@@ -236,6 +236,7 @@ TorFlowProbe* torflowprobe_new(TorFlowEventManager* manager, guint workerID,
 
 void torflowprobe_free(TorFlowProbe* probe) {
     g_assert(probe);
+    info("%s: Removing probe.", probe->id);
 
     if(probe->exitRelayIdentity) {
         g_free(probe->exitRelayIdentity);
@@ -277,5 +278,9 @@ in_port_t torflowprobe_getHostClientSocksPort(TorFlowProbe* probe) {
 
 void torflowprobe_onTimeout(TorFlowProbe* probe) {
     g_assert(probe);
-    _torflowprobe_onFileClientComplete(probe, FALSE, 0, 0, 0, 0);
+
+    if (probe->fileClient == NULL)
+        _torflowprobe_onFileClientComplete(probe, FALSE, 0, 0, 0, 0);
+    else
+        torflowfileclient_timeout(probe->fileClient);
 }

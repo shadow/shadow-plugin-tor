@@ -12,6 +12,7 @@ struct _TorFlowRelay {
     gboolean isRunning;
     gboolean isFast;
     gboolean isExit;
+    gboolean isAuth;
 
     guint v3Bandwidth;
     guint descriptorBandwidth;
@@ -130,6 +131,11 @@ void torflowrelay_setIsExit(TorFlowRelay* relay, gboolean isExit) {
     relay->isExit = isExit;
 }
 
+void torflowrelay_setIsAuth(TorFlowRelay* relay, gboolean isAuth) {
+    g_assert(relay);
+    relay->isAuth = isAuth;
+}
+
 void torflowrelay_setV3Bandwidth(TorFlowRelay* relay, guint v3Bandwidth) {
     g_assert(relay);
     relay->v3Bandwidth = v3Bandwidth;
@@ -168,6 +174,11 @@ gboolean torflowrelay_getIsFast(TorFlowRelay* relay) {
 gboolean torflowrelay_getIsExit(TorFlowRelay* relay) {
     g_assert(relay);
     return relay->isExit ;
+}
+
+gboolean torflowrelay_getIsAuth(TorFlowRelay* relay) {
+    g_assert(relay);
+    return relay->isAuth;
 }
 
 guint torflowrelay_getDescriptorBandwidth(TorFlowRelay* relay) {

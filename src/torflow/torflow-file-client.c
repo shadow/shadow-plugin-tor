@@ -373,9 +373,10 @@ beginsocks:
             client->nextRecvPercLog += 20.0f;
         }
 
+        clock_gettime(CLOCK_REALTIME, &(client->end));
+
         /* finished a download probe - only the prober will get here bc senders stop reading */
         if(client->remaining <= 0) {
-            clock_gettime(CLOCK_REALTIME, &(client->end));
 
             gsize roundTripTime = _torflowfileclient_computeTime(&client->start, &client->first);
             gsize payloadTime = _torflowfileclient_computeTime(&client->first, &client->end);
@@ -397,7 +398,7 @@ beginsocks:
     }
 
     case TORFLOWSOCKSCLIENT_ERROR: {
-        /* this is an error or timeout */
+        /* this is an error */
         torfloweventmanager_deregister(client->manager, client->descriptor);
         close(client->descriptor);
         client->descriptor = 0;
@@ -505,6 +506,20 @@ TorFlowFileClient* torflowfileclient_new(TorFlowEventManager* manager, guint wor
     client->state = TORFLOWSOCKSCLIENT_CONNECTING;
 
     return client;
+}
+
+void torflowfileclient_timeout(TorFlowFileClient* client) {
+  g_assert(client);
+
+  /* this is a timeout */
+  gsize roundTripTime = _torflowfileclient_computeTime(&client->start, &client->first);
+  gsize payloadTime = _torflowfileclient_computeTime(&client->first, &client->end);
+  gsize totalTime = _torflowfileclient_computeTime(&client->start, &client->end);
+  gsize contentLength = client->transferSizeBytes - client->remaining;
+
+  if(client->onFileClientComplete) {
+      client->onFileClientComplete(client->onFileClientCompleteArg, TRUE, contentLength, roundTripTime, payloadTime, totalTime);
+  }
 }
 
 void torflowfileclient_free(TorFlowFileClient* client) {

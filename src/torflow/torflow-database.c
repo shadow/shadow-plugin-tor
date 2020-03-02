@@ -157,6 +157,7 @@ static TorFlowRelay* _torflowdatabase_parseRelay(TorFlowDatabase* database,
     gboolean isRunning = (g_strstr_len(flagInfo, -1, " Running") != NULL) ? TRUE : FALSE;
     gboolean isFast = (g_strstr_len(flagInfo, -1, " Fast") != NULL) ? TRUE : FALSE;
     gboolean isExit = (g_strstr_len(flagInfo, -1, " Exit") != NULL) ? TRUE : FALSE;
+    gboolean isAuth = (g_strstr_len(flagInfo, -1, " Authority") != NULL) ? TRUE : FALSE;
     if(isExit && isRunning && g_strstr_len(flagInfo, -1, " BadExit") != NULL) {
         isRunning = FALSE;
     }
@@ -164,6 +165,7 @@ static TorFlowRelay* _torflowdatabase_parseRelay(TorFlowDatabase* database,
     torflowrelay_setIsRunning(relay, isRunning);
     torflowrelay_setIsFast(relay, isFast);
     torflowrelay_setIsExit(relay, isExit);
+    torflowrelay_setIsAuth(relay, isAuth);
 
     /* now parse the bandwidth weight line and set the bandwidth in the relay */
     guint descriptorBandwidth = 0;
@@ -351,7 +353,13 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
                     bwRatioIsSet = TRUE;
                 }
 
-                guint v3BW = (bwRatioIsSet && bwRatio >= 0.0f) ? (guint)(advertisedBW * bwRatio) : advertisedBW;
+                //guint v3BW = (bwRatioIsSet && bwRatio >= 0.0f) ? (guint)(advertisedBW * bwRatio) : advertisedBW;
+                guint v3BW;
+                if (torflowrelay_getIsExit(relay))
+              		v3BW = relayMeanBW > relayFilteredBW ? relayMeanBW : relayFilteredBW;
+		else
+                        v3BW = advertisedBW;
+                        
 
                 info("Computing bandwidth for relay %s (%s), prev_bw=%u, ratioIsSet=%s, ratio=%f, v3bw=%u",
                         torflowrelay_getNickname(relay), torflowrelay_getIdentity(relay),
@@ -370,7 +378,7 @@ static void _torflowdatabase_aggregateResults(TorFlowDatabase* database) {
     // finally, loop through nodes and cap bandwidths that are too large
     gdouble maxWeightFraction = torflowconfig_getMaxRelayWeightFraction(database->config);
     guint maxBandwidth = (guint)(totalBW * maxWeightFraction);
-    guint minBandwidth = 20;
+    guint minBandwidth = 1;
 
     g_hash_table_iter_init(&iter, database->relaysByIdentity);
     while(g_hash_table_iter_next(&iter, &key, &value)) {

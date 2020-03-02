@@ -20,6 +20,7 @@ TorFlowFileClient* torflowfileclient_new(TorFlowEventManager* manager, guint wor
         in_port_t socksPort, TorFlowPeer* fileServer, gsize transferSizeBytes,
         OnFileClientCompleteFunc onFileClientComplete, gpointer onFileClientCompleteArg);
 void torflowfileclient_free(TorFlowFileClient* client);
+void torflowfileclient_timeout(TorFlowFileClient* client);
 
 in_port_t torflowfileclient_getHostClientSocksPort(TorFlowFileClient* client);
 
