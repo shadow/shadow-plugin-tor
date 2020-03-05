@@ -107,6 +107,9 @@ list(REMOVE_ITEM all_src
     ${TOR_ROOT_DIR}/src/ext/ed25519/donna/ed25519.c
     ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test.c
     ${TOR_ROOT_DIR}/src/ext/ed25519/donna/test-internals.c
+    ${TOR_ROOT_DIR}/src/feature/dirauth/dirauth_stub.c
+    ${TOR_ROOT_DIR}/src/feature/dircache/dircache_stub.c
+    ${TOR_ROOT_DIR}/src/feature/relay/relay_stub.c
     ${TOR_ROOT_DIR}/src/lib/tls/nss_countbytes.c
     ${TOR_ROOT_DIR}/src/lib/tls/tortls_nss.c
     ${TOR_ROOT_DIR}/src/lib/tls/x509_nss.c
