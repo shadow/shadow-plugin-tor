@@ -6,6 +6,7 @@
 
 # Preconditions:
 #  * CC environment var set to preferred C compiler (gcc or clang)
+#  * TOR_VERSION optionally set to the desired Tor version
 #  * ubuntu18 packages are available.
 #  * Run as a sudoer.
 #  * ./shadow-tor-plugin is source directory for shadow-tor-plugin.
@@ -81,9 +82,11 @@ install_shadow_plugin_tor_build_deps () (
 
 install_shadow_plugin_tor () (
     eval "$TRACE_CMD"
-    cd $1
+    local SHADOW_PLUGIN_TOR_SRC=$1
+    local TOR_VERSION=$2
+    cd $SHADOW_PLUGIN_TOR_SRC
     ./setup dependencies -y
-    ./setup build -y
+    ./setup build --tor-version=$TOR_VERSION -y
     ./setup install
 )
 
@@ -120,6 +123,7 @@ main () (
     SHADOW_SRC=$PWD/shadow
     SHADOW_PLUGIN_TOR_SRC=$PWD/shadow-plugin-tor
     SIMULATION_DIR=$PWD/simulation
+    TOR_VERSION=${TOR_VERSION:-0.3.5.7}
 
     install_compiler $CC
 
@@ -130,7 +134,7 @@ main () (
     install_tgen $TGEN_SRC $INSTALL_PREFIX
 
     install_shadow_plugin_tor_build_deps
-    install_shadow_plugin_tor $SHADOW_PLUGIN_TOR_SRC $INSTALL_PREFIX
+    install_shadow_plugin_tor $SHADOW_PLUGIN_TOR_SRC $TOR_VERSION
     
     run_simulation $SIMULATION_DIR $SHADOW_PLUGIN_TOR_SRC $INSTALL_PREFIX/bin/shadow
     validate_simulation $SIMULATION_DIR
