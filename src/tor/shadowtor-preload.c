@@ -4,11 +4,14 @@
  * See LICENSE for licensing information
  */
 
-#include <fcntl.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
 
-#include <openssl/crypto.h>
 #include <event2/dns.h>
+#include <openssl/crypto.h>
+#include <openssl/rand.h>
 
 /********************************************************************************
  * start interposition functions
@@ -119,15 +122,29 @@ void RAND_seed(const void *buf, int num) {
     return;
 }
 
+// Callback return type changed from void to int in OpenSSL_1_1_0-pre1.
+#if OPENSSL_VERSION_NUMBER >= 0x010100001L
+static int nop_seed(const void* buf, int num) { return 1; }
+#else
+static void nop_seed(const void* buf, int num) {}
+#endif
+
 void RAND_add(const void *buf, int num, double entropy) {
     return;
 }
+
+// Callback return type changed from void to int in OpenSSL_1_1_0-pre1.
+#if OPENSSL_VERSION_NUMBER >= 0x010100001L
+static int nop_add(const void* buf, int num, double entropy) { return 1; }
+#else
+static void nop_add(const void* buf, int num, double entropy) {}
+#endif
 
 int RAND_poll() {
     return 1;
 }
 
-static int _shadowtorpreload_getRandomBytes(char* buf, int numBytes) {
+static int _shadowtorpreload_getRandomBytes(unsigned char* buf, int numBytes) {
     int bytesWritten = 0;
 
     /* shadow interposes this and will fill the buffer for us */
@@ -147,6 +164,13 @@ int RAND_pseudo_bytes(unsigned char *buf, int num) {
     return _shadowtorpreload_getRandomBytes(buf, num);
 }
 
+// Some versions of openssl define RAND_cleanup as a macro.
+// Get that definition out of the way so we can override the library symbol in
+// case it still exists.
+#ifdef RAND_cleanup
+#undef RAND_cleanup
+#endif
+
 void RAND_cleanup(void) {
     return;
 }
@@ -155,20 +179,13 @@ int RAND_status(void) {
     return 1;
 }
 
-static const struct {
-    void* seed;
-    void* bytes;
-    void* cleanup;
-    void* add;
-    void* pseudorand;
-    void* status;
-} shadowtorpreload_customRandMethod = {
-    RAND_seed,
-    RAND_bytes,
-    RAND_cleanup,
-    RAND_add,
-    RAND_pseudo_bytes,
-    RAND_status
+static const RAND_METHOD shadowtorpreload_customRandMethod = {
+    .seed = nop_seed,
+    .bytes = RAND_bytes,
+    .cleanup = RAND_cleanup,
+    .add = nop_add,
+    .pseudorand = RAND_pseudo_bytes,
+    .status = RAND_status,
 };
 
 const RAND_METHOD* RAND_get_rand_method() {
