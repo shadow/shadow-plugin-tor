@@ -21,13 +21,13 @@ TOR_DEFAULT_VERSION="0.3.5.7"
 TOR_URL="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz".format(TOR_DEFAULT_VERSION)
 TOR_URL_SIG="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz.asc".format(TOR_DEFAULT_VERSION)
 
-OPENSSL_DEFAULT_VERSION="openssl-1.0.1e"
-OPENSSL_URL="https://www.openssl.org/source/old/1.0.1/{0}.tar.gz".format(OPENSSL_DEFAULT_VERSION)
-OPENSSL_URL_SIG="https://www.openssl.org/source/old/1.0.1/{0}.tar.gz.asc".format(OPENSSL_DEFAULT_VERSION)
+OPENSSL_DEFAULT_VERSION="1.1.0h"
+OPENSSL_URL="https://www.openssl.org/source/old/{0}/openssl-{1}.tar.gz".format(OPENSSL_DEFAULT_VERSION[:-1], OPENSSL_DEFAULT_VERSION)
+OPENSSL_URL_SIG="https://www.openssl.org/source/old/{0}/openssl-{1}.tar.gz.asc".format(OPENSSL_DEFAULT_VERSION[:-1], OPENSSL_DEFAULT_VERSION)
 
-LIBEVENT_DEFAULT_VERSION="libevent-2.0.21-stable"
-LIBEVENT_URL="https://github.com/downloads/libevent/libevent/{0}.tar.gz".format(LIBEVENT_DEFAULT_VERSION)
-LIBEVENT_URL_SIG="https://github.com/downloads/libevent/libevent/{0}.tar.gz.asc".format(LIBEVENT_DEFAULT_VERSION)
+LIBEVENT_DEFAULT_VERSION="2.1.11-stable"
+LIBEVENT_URL="https://github.com/libevent/libevent/releases/download/release-{0}/libevent-{0}.tar.gz".format(LIBEVENT_DEFAULT_VERSION)
+LIBEVENT_URL_SIG="https://github.com/libevent/libevent/releases/download/release-{0}/libevent-{0}.tar.gz.asc".format(LIBEVENT_DEFAULT_VERSION)
 
 def main():
     parser_main = argparse.ArgumentParser(
