@@ -109,10 +109,10 @@ validate_simulation () (
     eval "$TRACE_CMD"
     SIMULATION_DIR=$1
 
-    COMPLETE=`find $SIMULATION_DIR/shadowtor-minimal/shadow.data/hosts -name '*client*.log' -exec grep transfer-complete \{\} \; | wc -l`
+    COMPLETE=`find $SIMULATION_DIR/shadowtor-minimal/shadow.data/hosts -name '*client*.log' -exec grep stream-success \{\} \; | wc -l`
     if [ $COMPLETE -ne 40 ]
     then
-      echo Expected 40 transfers got $COMPLETE
+      echo Expected 40 successful streams got $COMPLETE
       return 1
     fi
 )
