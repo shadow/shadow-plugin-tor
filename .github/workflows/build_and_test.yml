@@ -29,6 +29,9 @@ jobs:
       TOR_VERSION: ${{ matrix.tor_version }}
     
     steps:
+      - name: Update packages
+        run: sudo apt-get update
+
       - name: Checkout Shadow
         uses: actions/checkout@v2
         with:
