@@ -68,13 +68,13 @@ aux_source_directory(${TOR_ROOT_DIR}/src/trunnel/hs all_src)
 include_directories(${TOR_ROOT_DIR}/src/ext/trunnel)
 aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel all_src)
 
-# add tor tracing directory, if enabled
-if(TOR_TRACING STREQUAL ON)
-    include_directories(${TOR_ROOT_DIR}/src/lib/trace)
-    aux_source_directory(${TOR_ROOT_DIR}/src/lib/trace all_src)
-endif(TOR_TRACING STREQUAL ON)
-
 list(REMOVE_DUPLICATES all_src)
+
+# remove tor tracing directory, if not enabled
+if(NOT TOR_TRACING STREQUAL ON)
+    aux_source_directory(${TOR_ROOT_DIR}/src/lib/trace tracing_src)
+    list(REMOVE_ITEM all_src ${tracing_src})
+endif(NOT TOR_TRACING STREQUAL ON)
 
 # ignore the files that should not be inlcuded in the build
 list(REMOVE_ITEM all_src 
