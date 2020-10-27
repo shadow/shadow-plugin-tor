@@ -49,47 +49,29 @@ include_directories(${TOR_ROOT_DIR}/src)
 include_directories(${TOR_ROOT_DIR}/src/ext)
 set(all_src "")
 
-aux_src_subdirs(${TOR_ROOT_DIR}/src/app partial_src)
-list(APPEND all_src ${partial_src})
+aux_src_subdirs(${TOR_ROOT_DIR}/src/app all_src)
+aux_src_subdirs(${TOR_ROOT_DIR}/src/core all_src)
+aux_src_subdirs(${TOR_ROOT_DIR}/src/feature all_src)
+aux_src_subdirs(${TOR_ROOT_DIR}/src/lib all_src)
 
-aux_src_subdirs(${TOR_ROOT_DIR}/src/core partial_src)
-list(APPEND all_src ${partial_src})
-
-aux_src_subdirs(${TOR_ROOT_DIR}/src/feature partial_src)
-list(APPEND all_src ${partial_src})
-
-aux_src_subdirs(${TOR_ROOT_DIR}/src/lib partial_src)
-list(APPEND all_src ${partial_src})
-
-aux_source_directory(${TOR_ROOT_DIR}/src/ext partial_src)
-list(APPEND all_src ${partial_src})
-
-aux_source_directory(${TOR_ROOT_DIR}/src/ext/curve25519_donna partial_src)
-list(APPEND all_src ${partial_src})
-
-aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/ref10 partial_src)
-list(APPEND all_src ${partial_src})
-
-aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/donna partial_src)
-list(APPEND all_src ${partial_src})
+aux_source_directory(${TOR_ROOT_DIR}/src/ext all_src)
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/curve25519_donna all_src)
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/ref10 all_src)
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/ed25519/donna all_src)
 
 include_directories(${TOR_ROOT_DIR}/src/trunnel)
-aux_source_directory(${TOR_ROOT_DIR}/src/trunnel partial_src)
-list(APPEND all_src ${partial_src})
+aux_source_directory(${TOR_ROOT_DIR}/src/trunnel all_src)
 
 include_directories(${TOR_ROOT_DIR}/src/trunnel/hs)
-aux_source_directory(${TOR_ROOT_DIR}/src/trunnel/hs partial_src)
-list(APPEND all_src ${partial_src})
+aux_source_directory(${TOR_ROOT_DIR}/src/trunnel/hs all_src)
 
 include_directories(${TOR_ROOT_DIR}/src/ext/trunnel)
-aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel partial_src)
-list(APPEND all_src ${partial_src})
+aux_source_directory(${TOR_ROOT_DIR}/src/ext/trunnel all_src)
 
 # add tor tracing directory, if enabled
 if(TOR_TRACING STREQUAL ON)
     include_directories(${TOR_ROOT_DIR}/src/lib/trace)
-    aux_source_directory(${TOR_ROOT_DIR}/src/lib/trace partial_src)
-    list(APPEND all_src ${partial_src})
+    aux_source_directory(${TOR_ROOT_DIR}/src/lib/trace all_src)
 endif(TOR_TRACING STREQUAL ON)
 
 list(REMOVE_DUPLICATES all_src)
