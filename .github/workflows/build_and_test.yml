@@ -15,7 +15,7 @@ on:
 
 jobs:
   testing:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
         # TODO: add clang. Currently builds but has unsuccessful xfers in simulation.
