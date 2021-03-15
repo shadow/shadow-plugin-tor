@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <event2/dns.h>
@@ -145,15 +146,9 @@ int RAND_poll() {
 }
 
 static int _shadowtorpreload_getRandomBytes(unsigned char* buf, int numBytes) {
-    int bytesWritten = 0;
-
-    /* shadow interposes this and will fill the buffer for us */
-    int fd = open("/dev/random", O_RDONLY);
-    int res = read(fd, buf, (size_t)numBytes);
-    assert(res > 0);
-    close(fd);
-
-    return 1;
+    // shadow interposes this and will fill the buffer for us
+    // return 1 on success, 0 otherwise
+    return (numBytes == syscall(SYS_getrandom, buf, (size_t)numBytes, 0)) ? 1 : 0;
 }
 
 int RAND_bytes(unsigned char *buf, int num) {
